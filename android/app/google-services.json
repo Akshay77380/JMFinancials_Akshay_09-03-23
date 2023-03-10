@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "966259862444",
+    "project_id": "jmfinancials-71a7e",
+    "storage_bucket": "jmfinancials-71a7e.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:966259862444:android:fac5e15c3793cb2cbce809",
+        "android_client_info": {
+          "package_name": "blinktradepro.jmfs"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "966259862444-bm5olfij04qo92c82u9ant9kq1nnt6vs.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD_IIeyBCMAEnaCZR6B6S08fOFm2ROao2M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "966259862444-bm5olfij04qo92c82u9ant9kq1nnt6vs.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "966259862444-fq1lajv6ljhn7fri7tq3plajicqokfnv.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.blinktradepro.jmfs"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

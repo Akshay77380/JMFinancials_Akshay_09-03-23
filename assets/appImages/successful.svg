@@ -1,0 +1,13 @@
+<svg width="114" height="111" viewBox="0 0 114 111" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle opacity=".1" cx="57.319" cy="55.5" r="36.393" fill="#0BAC68"/>
+    <circle cx="57.319" cy="55.5" r="30.025" fill="#0BAC68"/>
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M73.253 43.922a2.73 2.73 0 0 1 .193 3.856L56.745 66.236a3.64 3.64 0 0 1-5.028.355l-10.248-8.54a2.73 2.73 0 0 1 3.495-4.193l8.905 7.42 15.529-17.163a2.73 2.73 0 0 1 3.855-.193z" fill="#fff"/>
+    <circle cx="101.447" cy="19.561" r="4.094" fill="#61C1FE"/>
+    <circle cx="56.865" cy="4.094" r="4.094" fill="#FF3B87"/>
+    <circle cx="15.012" cy="19.561" r="4.094" fill="#61C1FE"/>
+    <circle cx="4.094" cy="55.045" r="4.094" fill="#FF3B87"/>
+    <circle cx="15.012" cy="89.619" r="4.094" fill="#61C1FE"/>
+    <circle cx="56.865" cy="106.906" r="4.094" fill="#FED660"/>
+    <circle cx="97.807" cy="89.619" r="4.094" fill="#61C1FE"/>
+    <circle cx="109.635" cy="55.045" r="4.094" fill="#FED660"/>
+</svg>

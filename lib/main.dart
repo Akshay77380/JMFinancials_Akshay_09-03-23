@@ -789,6 +789,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         themeMode: ThemeConstants.themeMode.value,
         home: SplashScreen(),
         debugShowCheckedModeBanner: false,
+
       ),
     );
   }

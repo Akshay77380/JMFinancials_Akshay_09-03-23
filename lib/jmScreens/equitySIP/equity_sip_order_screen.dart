@@ -66,7 +66,6 @@ class _EquitySipOrderScreenState extends State<EquitySipOrderScreen> {
       });
     }
   }
-
   @override
   Widget build(BuildContext context) {
     var theme = Theme.of(context);
@@ -591,9 +590,9 @@ class _EquitySipOrderScreenState extends State<EquitySipOrderScreen> {
                 duration: _durationController.text,
                 name: widget.model.name,
                 exch: widget.model.exch,
-                exchType:widget.model.exchType,
+                exchType:widget.model.getExchType,
                 scriptCode: widget.model.exchCode.toString(),
-                symbol: widget.model.name,
+                symbol: widget.model.tradingSymbol,
                 upperLimitPrice: widget.model.upperCktLimit,
                 lowerLimitPrice: widget.model.lowerCktLimit,
                 startDate:

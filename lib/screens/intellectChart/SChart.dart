@@ -777,6 +777,7 @@ class _ChartState extends State<SChart> with SingleTickerProviderStateMixin {
         : MaterialApp(
             theme: Theme.of(context),
             debugShowCheckedModeBanner: false,
+
             home: SafeArea(
               child: Scaffold(
                 key: _scaffoldKey,

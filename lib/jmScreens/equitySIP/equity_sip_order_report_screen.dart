@@ -1,13 +1,20 @@
 import 'package:bubble_tab_indicator/bubble_tab_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:markets/jmScreens/equitySIP/expiry_sip_order_report.dart';
+import 'package:markets/model/scrip_info_model.dart';
+import 'package:markets/util/DataConstants.dart';
 import '../../style/theme.dart';
 import '../../util/Utils.dart';
 import '../../widget/custom_tab_bar.dart';
 import 'active_sip_order_report.dart';
 import 'pause_sip_order_report.dart';
 
-class EquitySipOrderReportScreen extends StatefulWidget {
+class EquitySipOrderReportScreen extends StatefulWidget
+{
+  final ScripInfoModel model;
+  const EquitySipOrderReportScreen({Key key, this.model}) : super(key: key);
+
   @override
   State<EquitySipOrderReportScreen> createState() => _EquitySipScreenState();
 }
@@ -371,7 +378,7 @@ class _EquitySipScreenState extends State<EquitySipOrderReportScreen>
         children: [
           ActiveSipOrderReport(),
           PauseSipOrderReport(),
-          PauseSipOrderReport(),
+          ExpirySipOrderReport(),
           SingleChildScrollView(
               child: Tiles(4)
           ),

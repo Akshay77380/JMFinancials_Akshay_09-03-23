@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -9,8 +10,8 @@ import 'equity_sip_order_details.dart';
 import 'package:http/http.dart' as http;
 import '../../util/Dataconstants.dart';
 
-class PauseSipOrderReport extends StatelessWidget
-{
+class ExpirySipOrderReport extends StatelessWidget {
+
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +19,7 @@ class PauseSipOrderReport extends StatelessWidget
       future: getActiveSips(Dataconstants.feUserID,Dataconstants.loginData.data.jwtToken),
       builder: (context, snapshot) {
         if (snapshot.hasData) {
-          final dataList = snapshot.data.where((item) => item['InstructionState'] == 'P').toList();
+          final dataList = snapshot.data.where((item) => item['InstructionState'] == 'S').toList();
           return Scaffold(
             body: SingleChildScrollView(
               child: Column(
@@ -28,7 +29,7 @@ class PauseSipOrderReport extends StatelessWidget
                     physics: NeverScrollableScrollPhysics(),
                     itemCount: dataList.length,
                     itemBuilder: (context, index) =>
-                        PauseSipRow(data: dataList[index]),
+                        ExpirySipRow(data: dataList[index]),
                   ),
                   const SizedBox(
                     height: 15,
@@ -73,14 +74,13 @@ class PauseSipOrderReport extends StatelessWidget
       throw Exception('Failed to fetch active SIPs');
     }
   }
-
 }
 
-class PauseSipRow extends StatelessWidget {
+class ExpirySipRow extends StatelessWidget {
   // ScripInfoModel model = ScripInfoModel();
   final dynamic data;
 
-  PauseSipRow({Key key, this.data}) : super(key: key);
+  ExpirySipRow({Key key, this.data}) : super(key: key);
   @override
   Widget build(BuildContext context) {
     final symbol = data['Symbol'], exch = data['Exch'],Sip_Startdate = data['StartDate'],Sip_ExpiryDate = data['ExpiryDate'],Sip_NextDate = data['NextTradeDate'],Sip_Qty = data['Qty'],Sip_OrderValue = data['Value'],instructState = data['InstructionState'],Sip_ReferenceID =data['InstID'],Sip_BuyExchRate = data['BuyExchTradedRate'];

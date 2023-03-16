@@ -1,18 +1,21 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-
+import '../../util/Dataconstants.dart';
 import '../../style/theme.dart';
 import '../../util/CommonFunctions.dart';
 import '../../util/Utils.dart';
+import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
 
 class EquitySipOrderDetails extends StatefulWidget {
   final bool status;
+  var sipStatus,symbol,frequency,sipType,qty,price,percentChangeText,sipReferenceId,period,startDate,nextDate,endDate,avgPrice;
+  EquitySipOrderDetails({Key key, @required this.status, this.sipStatus, this.symbol, this.frequency, this.sipType, this.qty, this.price, this.percentChangeText, this.sipReferenceId, this.period, this.startDate, this.nextDate, this.endDate, this.avgPrice}) : super(key: key);
 
   // orderDatum order;
-
-  EquitySipOrderDetails(this.status);
-
   @override
   State<EquitySipOrderDetails> createState() => _EquitySipOrderDetailsState();
 }
@@ -87,7 +90,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                                     fontWeight: FontWeight.w400),
                               ),
                               Text(
-                                '2000',
+                                '${widget.qty}',
                                 style: Utils.fonts(
                                   fontWeight: FontWeight.w700,
                                   size: 15.0,
@@ -105,7 +108,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                                     fontWeight: FontWeight.w400),
                               ),
                               Text(
-                                '80.50',
+                                '${widget.avgPrice}',
                                 style: Utils.fonts(
                                   fontWeight: FontWeight.w700,
                                   size: 15.0,
@@ -117,7 +120,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text(
-                                "widget.status",
+                                "STATUS",
                                 style: Utils.fonts(
                                     color: Utils.greyColor,
                                     size: 15.0,
@@ -125,6 +128,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                               ),
                               Text(
                                 widget.status ? 'ACTIVE' : 'PAUSE',
+                                // '${widget.sipStatus}',
                                 style: Utils.fonts(
                                     fontWeight: FontWeight.w700,
                                     size: 15.0,
@@ -136,7 +140,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                           )
                         ],
                       ),
-                      SizedBox(
+                      const SizedBox(
                         height: 20,
                       ),
                       Container(
@@ -145,12 +149,12 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                               color: Utils.greyColor,
                               width: 1,
                             ),
-                            borderRadius: BorderRadius.all(
+                            borderRadius: const BorderRadius.all(
                               Radius.circular(15.0),
                             )),
                         child: Column(
                           children: [
-                            SizedBox(
+                            const SizedBox(
                               height: 10,
                             ),
                             Text("SIP STOCK",
@@ -165,7 +169,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                                 children: [
                                   FittedBox(
                                     fit: BoxFit.cover,
-                                    child: Text('TATAPOWER',
+                                    child: Text('${widget.symbol}',
                                         style: Utils.fonts(
                                             size: 22.0,
                                             color: Utils.blackColor,
@@ -180,7 +184,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                                                 padding:
                                                     const EdgeInsets.symmetric(
                                                         horizontal: 8.0),
-                                                child: Text('243.85',
+                                                child: Text('${widget.price}',
                                                     // widget.order.model.close
                                                     //     .toStringAsFixed(
                                                     //     widget.order.model
@@ -194,7 +198,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                                               Row(
                                                 children: [
                                                   Text(
-                                                    '-2.80 (-2.43%)',
+                                                    '${widget.percentChangeText}',
                                                     // widget.order.model
                                                     //     .priceChangeText +
                                                     //     " " +
@@ -272,7 +276,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                                   size: 14.0,
                                   fontWeight: FontWeight.w400,
                                   color: Utils.greyColor)),
-                          Text('20200527000207',
+                          Text('${widget.sipReferenceId}',
                               style: Utils.fonts(
                                   size: 14.0, color: Utils.blackColor))
                         ],
@@ -288,12 +292,12 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                                   size: 14.0,
                                   fontWeight: FontWeight.w400,
                                   color: Utils.greyColor)),
-                          Text('Monthly',
+                          Text('${widget.frequency}',
                               style: Utils.fonts(
                                   size: 14.0, color: Utils.blackColor))
                         ],
                       ),
-                      SizedBox(
+                      const SizedBox(
                         height: 10,
                       ),
                       Row(
@@ -304,7 +308,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                                   size: 14.0,
                                   fontWeight: FontWeight.w400,
                                   color: Utils.greyColor)),
-                          Text('60',
+                          Text('${widget.period}',
                               style: Utils.fonts(
                                   size: 14.0, color: Utils.blackColor))
                         ],
@@ -320,7 +324,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                                   size: 14.0,
                                   fontWeight: FontWeight.w400,
                                   color: Utils.greyColor)),
-                          Text('22 Apr 2022',
+                          Text('${widget.startDate}',
                               style: Utils.fonts(
                                   size: 14.0, color: Utils.blackColor))
                         ],
@@ -336,7 +340,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                                   size: 14.0,
                                   fontWeight: FontWeight.w400,
                                   color: Utils.greyColor)),
-                          Text('15 May 2022',
+                          Text('${widget.nextDate}',
                               style: Utils.fonts(
                                   size: 14.0, color: Utils.blackColor))
                         ],
@@ -353,7 +357,7 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
                                     size: 14.0,
                                     fontWeight: FontWeight.w400,
                                     color: Utils.greyColor)),
-                            Text('15 Apr 2027',
+                            Text('${widget.endDate}',
                                 style: Utils.fonts(
                                     size: 14.0, color: Utils.blackColor))
                           ],
@@ -499,77 +503,105 @@ class _EquitySipOrderDetailsState extends State<EquitySipOrderDetails> {
     );
   }
 
-  Widget confirmDialog(bool isCancel) {
-    return Column(
-      children: [
-        const SizedBox(
-          height: 15,
-        ),
-        SvgPicture.asset(isCancel
-            ? 'assets/appImages/cancelSip.svg'
-            : 'assets/appImages/pauseSip.svg'),
-        const SizedBox(
-          height: 15,
-        ),
-        Text('${isCancel ? 'Cancel' : 'Pause'} SIP?',
-            style: Utils.fonts(size: 18.0, fontWeight: FontWeight.w600)),
-        const SizedBox(
-          height: 15,
-        ),
-        Text('Are you sure you want to ${isCancel ? 'cancel' : 'pause'} SIP?',
-            style: Utils.fonts(
-                size: 14.0,
-                fontWeight: FontWeight.w400,
-                color: Utils.greyColor)),
-        SizedBox(
-          height: 20,
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Divider(
-            thickness: 2,
+  Widget confirmDialog(bool isCancel)
+  {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          const SizedBox(
+            height: 15,
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(top: 20.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              InkWell(
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 60, vertical: 10),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Utils.greyColor, width: 1),
-                  ),
-                  child: Text('Yes',
-                      style: Utils.fonts(
-                          size: 16.0,
-                          fontWeight: FontWeight.w400,
-                          color: Utils.greyColor)),
-                ),
-              ),
-              InkWell(
-                onTap: () {
-                  Navigator.of(context).pop();
-                },
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 60, vertical: 10),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    color: Utils.primaryColor,
-                  ),
-                  child: Text('No',
-                      style: Utils.fonts(
-                          size: 16.0,
-                          fontWeight: FontWeight.w400,
-                          color: Utils.whiteColor)),
-                ),
-              ),
-            ],
+          SvgPicture.asset(isCancel
+              ? 'assets/appImages/cancelSip.svg'
+              : 'assets/appImages/pauseSip.svg'),
+          const SizedBox(
+            height: 15,
           ),
-        ),
-      ],
+          Text('${isCancel ? 'Cancel' : 'Pause'} SIP?',
+              style: Utils.fonts(size: 18.0, fontWeight: FontWeight.w600)),
+          const SizedBox(
+            height: 15,
+          ),
+          Text('Are you sure you want to ${isCancel ? 'Cancel' : 'Pause'} SIP?',
+              style: Utils.fonts(
+                  size: 14.0,
+                  fontWeight: FontWeight.w400,
+                  color: Utils.greyColor)),
+          SizedBox(
+            height: 20,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Divider(
+              thickness: 2,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 10.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                InkWell(
+                  onTap: () async
+                  {
+                    try {
+                      await getPauseSips(Dataconstants.feUserID,Dataconstants.loginData.data.jwtToken,'${widget.sipReferenceId}');
+                      Navigator.of(context).pop();
+                    } catch (e) {
+                      print('Error: $e');
+                    }
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 60, vertical: 10),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Utils.greyColor, width: 1),
+                    ),
+                    child: Text('Yes',
+                        style: Utils.fonts(
+                            size: 16.0,
+                            fontWeight: FontWeight.w400,
+                            color: Utils.greyColor)),
+                  ),
+                ),
+                InkWell(
+                  onTap: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 60, vertical: 10),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      color: Utils.primaryColor,
+                    ),
+                    child: Text('No',
+                        style: Utils.fonts(
+                            size: 16.0,
+                            fontWeight: FontWeight.w400,
+                            color: Utils.whiteColor)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
+  }
+  Future<List<dynamic>> getPauseSips(String clientCode, String sessionToken,String InstID) async {
+    final url = Uri.parse('https://tradeapiuat.jmfonline.in/tools/Instruction/api/sip/Pause');
+    final headers = {'Content-Type': 'application/json'};
+    final body = jsonEncode({'ClientCode': clientCode, 'SessionToken': sessionToken,'InstID':InstID});
+    final response = await http.post(url, headers: headers, body: body);
+    print("response data ${response.body}");
+    print("response body data${body}");
+    if (response.statusCode == 200)
+    {
+      return jsonDecode(response.body);
+    }
+    else
+    {
+      throw Exception('Failed to fetch pause SIPs');
+    }
   }
 }

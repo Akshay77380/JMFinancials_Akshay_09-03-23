@@ -307,8 +307,6 @@ class EquitySipOrderReview extends StatelessWidget {
                             // frequency,
                             // duration, name, exch, startDate, endDate, ltp, ordeValue;
 
-
-
                             DateTime start_parsedDate = DateFormat('dd MMM yyyy').parse(startDate);
                             DateTime end_parsedDate = DateFormat('dd MMM yyyy').parse(endDate);
 
@@ -318,47 +316,39 @@ class EquitySipOrderReview extends StatelessWidget {
                             print(start_formattedDate);
                             print(end_formattedDate);
 
-                            print("Sip Data :"
-                                "Exch :$exch"+","+
-                                "Exch type:$exchType"+","+
-                                "Symbol :$symbol"+","+
-                                "ScriptCode:$scriptCode"+","+
-                                "StartDate: $start_formattedDate"+","+
-                                "ExpiryDate: $end_formattedDate"+","+
-                                "SIPPeriod :$duration"+","+
-                                "Qty :$qty"+","+
-                                "Value:$ordeValue"+","+
-                                "UpperPriceLimit :$upperLimitPrice"+","+
-                                "LowerPriceLimit $lowerLimitPrice"+","
-                                "Session token : ${Dataconstants.loginData.data.jwtToken}"
-                                );
+                            // print("Sip Data :Exch :$exch,Exch type:$exchType,Symbol :$symbol,ScriptCode:$scriptCode,StartDate: $start_formattedDate,ExpiryDate: $end_formattedDate,SIPPeriod :$duration,Qty :$qty,Value:$ordeValue,UpperPriceLimit :$upperLimitPrice,LowerPriceLimit $lowerLimitPrice,Session token : ${Dataconstants.loginData.data.jwtToken}");
+                            var data = jsonEncode({
+                              "Source": "MOB",
+                              "SessionToken": Dataconstants.loginData.data.jwtToken,
+                              "ClientCode": Dataconstants.feUserID,
+                              "APIVersion" : 2,
+                              "Data": {
+                                "Exch":exch,
+                                "ExchType":exchType,
+                                "Symbol":symbol,
+                                "ScripCode":scriptCode,
+                                "StartDate":start_formattedDate,
+                                "ExpiryDate":end_formattedDate,
+                                "SIPPeriod":"Monthly",
+                                "Qty":qty,
+                                "Value":ordeValue,
+                                "UpperPriceLimit":upperLimitPrice,
+                                "LowerPriceLimit":lowerLimitPrice
+                              }
+                            });
+                            print("data $data");
+
                             http.Response response =  await http.post(Uri.parse("https://tradeapiuat.jmfonline.in/tools/Instruction/api/sip/create"),
                                 headers: {
                                   'Accept': 'application/json',
                                   'Content-Type': 'application/json'
                                 },
-                                body: jsonEncode({
-                                  "Source": "MOB",
-                                  "SessionToken": Dataconstants.loginData.data.jwtToken,
-                                  "ClientCode": Dataconstants.feUserID,
-                                  "APIVersion" : 2,
-                                  "Data": {
-                                    "Exch":exch,
-                                    "ExchType":"C",
-                                    "Symbol":name,
-                                    "ScripCode":scriptCode,
-                                    "StartDate":start_formattedDate,
-                                    "ExpiryDate":end_formattedDate,
-                                    "SIPPeriod":duration,
-                                    "Qty":qty,
-                                    "Value":ordeValue,
-                                    "UpperPriceLimit":upperLimitPrice,
-                                    "LowerPriceLimit":lowerLimitPrice
-                                  }
-                                }));
+                                body:data);
                             print("Response body${response.body}");
                             print("session Token :${Dataconstants.loginData.data.jwtToken}");
                           },
+
+
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 150.0, vertical: 20.0),
                             child: Text("START SIP",

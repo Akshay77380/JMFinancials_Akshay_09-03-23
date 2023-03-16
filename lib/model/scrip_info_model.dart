@@ -322,6 +322,34 @@ abstract class _ScripInfoModel with Store {
     }
   }
 
+  String get getExchType {
+    switch (exchCategory) {
+      case ExchCategory.nseEquity:
+        return 'C';
+        break;
+      case ExchCategory.nseFuture:
+      case ExchCategory.nseOptions:
+      return 'D';
+        break;
+      case ExchCategory.bseEquity:
+        return 'C';
+        break;
+      case ExchCategory.currenyFutures:
+      case ExchCategory.currenyOptions:
+      return 'D';
+        break;
+      case ExchCategory.bseCurrenyFutures:
+      case ExchCategory.bseCurrenyOptions:
+      return 'D';
+        break;
+      case ExchCategory.mcxFutures:
+      case ExchCategory.mcxOptions:
+      return 'D';
+        break;
+      default:
+        return '';
+    }
+  }
   String get recType {
     if (_recType != null) {
       Uint8List byteArray = new Uint8List(1);

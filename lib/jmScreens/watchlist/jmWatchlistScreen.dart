@@ -131,7 +131,7 @@ class _JmWatchlistScreenState extends State<JmWatchlistScreen> with AutomaticKee
     showModalBottomSheet(
         isScrollControlled: true,
         context: context,
-        shape: RoundedRectangleBorder(
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
             top: Radius.circular(20),
           ),
@@ -161,7 +161,7 @@ class _JmWatchlistScreenState extends State<JmWatchlistScreen> with AutomaticKee
                                   color: Utils.greyColor,
                                 ),
                               ),
-                              SizedBox(
+                              const SizedBox(
                                 height: 10,
                               ),
                               Center(
@@ -173,7 +173,7 @@ class _JmWatchlistScreenState extends State<JmWatchlistScreen> with AutomaticKee
                                 "Create Watchlist",
                                 style: Utils.fonts(size: 18.0),
                               ),
-                              SizedBox(
+                              const SizedBox(
                                 height: 10.0,
                               ),
                               TextField(
@@ -181,7 +181,7 @@ class _JmWatchlistScreenState extends State<JmWatchlistScreen> with AutomaticKee
                                 controller: createWatchListController,
                                 focusNode: myFocusNodeCreateWatchlist,
                                 showCursor: true,
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 18.0,
                                 ),
                                 onChanged: (value) {
@@ -191,7 +191,7 @@ class _JmWatchlistScreenState extends State<JmWatchlistScreen> with AutomaticKee
                                 },
                                 decoration: InputDecoration(
                                   fillColor: Theme.of(context).cardColor,
-                                  labelStyle: TextStyle(
+                                  labelStyle: const TextStyle(
                                     color: Colors.grey,
                                     fontSize: 15,
                                   ),

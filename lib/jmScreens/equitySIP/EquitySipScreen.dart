@@ -11,21 +11,29 @@ import '../../util/Utils.dart';
 import '../../widget/custom_tab_bar.dart';
 import 'equity_sip_order_report_screen.dart';
 import 'equity_sip_order_screen.dart';
+class EquitySipScreen extends StatefulWidget
+{
 
-class EquitySipScreen extends StatefulWidget {
   @override
   State<EquitySipScreen> createState() => _EquitySipScreenState();
-}
 
-class _EquitySipScreenState extends State<EquitySipScreen> {
+}
+class _EquitySipScreenState extends State<EquitySipScreen>
+{
+
   int _value = 20000;
   int period = 1;
   List<String> items = ['Daily', 'Weekly', 'Monthly'];
+  var clientCode,sessionToken;
 
   @override
   void initState() {
     super.initState();
     Dataconstants.isSip = false;
+    clientCode = Dataconstants.feUserID;
+    sessionToken = Dataconstants.loginData.data.jwtToken;
+    print("data inside: ${clientCode} ${sessionToken}  ");
+
   }
 
   @override
@@ -168,7 +176,7 @@ class _EquitySipScreenState extends State<EquitySipScreen> {
                             fontWeight: FontWeight.w600,
                             color: theme.textTheme.bodyText1.color),
                       ),
-                      SizedBox(
+                      const SizedBox(
                         width: 10,
                       ),
                       InkWell(
@@ -183,7 +191,7 @@ class _EquitySipScreenState extends State<EquitySipScreen> {
                         child: CircleAvatar(
                           radius: 10,
                           backgroundColor: Utils.greyColor.withOpacity(0.2),
-                          child: Icon(
+                          child: const Icon(
                             Icons.arrow_forward_ios,
                             color: Utils.greyColor,
                             size: 11,

@@ -116,6 +116,7 @@ dependencies:
   url_launcher: ^6.1.7
   archive: ^3.3.6
   pedantic_mono: ^1.21.1
+  alt_sms_autofill: ^1.0.0
 
 dev_dependencies:
   flutter_test:

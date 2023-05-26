@@ -14,6 +14,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:fl_chart/fl_chart.dart';
+// import 'package:syncfusion_flutter_maps/maps.dart';
 
 // import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 // import 'package:firebase_messaging/firebase_messaging.dart';
@@ -25,10 +26,14 @@ import 'package:get/get.dart';
 import 'package:http/http.dart';
 import 'package:markets/jmScreens/ScriptInfo/ScriptInfo.dart';
 import 'package:markets/util/Dataconstants.dart';
+import 'package:mobx/mobx.dart';
+import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:platform_device_id/platform_device_id.dart';
+import 'package:sqflite/sqflite.dart';
 import '../Connection/ISecITS/ITSClient.dart';
 import '../controllers/BseAdvanceController.dart';
+import '../controllers/CircuitBreakersController.dart';
 import '../controllers/DetailController.dart';
 import '../controllers/EventsBoardMeetController.dart';
 import '../controllers/EventsBonusController.dart';
@@ -44,12 +49,15 @@ import '../controllers/NseAdvanceController.dart';
 import '../controllers/OpenIpoController.dart';
 import '../controllers/WorldIndicesController.dart';
 import '../controllers/equitySipController.dart';
+import '../controllers/fundtransactioncontroller.dart';
+import '../controllers/holdingController.dart';
 import '../controllers/limitController.dart';
 import '../controllers/mostActiveCallController.dart';
 import '../controllers/netPositionController.dart';
 import '../controllers/orderBookController.dart';
 import '../controllers/positionFilterController.dart';
 import '../controllers/topGainersController.dart';
+import '../controllers/topHighestOIController.dart';
 import '../controllers/topLosersController.dart';
 import '../controllers/topPerformingIndustries.dart';
 import '../controllers/upcomingIpoController.dart';
@@ -63,13 +71,23 @@ import '../jmScreens/login/ChangePassword.dart';
 import '../jmScreens/login/Login.dart';
 import '../jmScreens/login/validatempin.dart';
 import '../jmScreens/mainScreen/MainScreen.dart';
+import '../jmScreens/market/market_stats_next.dart';
+import '../jmScreens/news/news.dart';
 import '../jmScreens/orders/holdings_screen.dart';
 import '../jmScreens/orders/orders_screen.dart';
 import '../jmScreens/profile/LimitScreen.dart';
+import '../jmScreens/redirectedWidgets/Events.dart';
+import '../jmScreens/redirectedWidgets/circuitBreakers.dart';
+import '../jmScreens/redirectedWidgets/options.dart';
+import '../jmScreens/redirectedWidgets/topPerformingIndustries..dart';
+import '../jmScreens/redirectedWidgets/trendingStocks.dart';
+import '../jmScreens/research/research_cards.dart';
+import '../jmScreens/research/research_screen.dart';
 import '../model/exchData.dart';
 import '../model/indices_listener.dart';
 import 'package:intl/intl.dart';
 import 'package:local_auth/local_auth.dart';
+import '../model/jmModel/topPerformingIndustries.dart';
 import '../model/scripStaticModel.dart';
 import '../model/scrip_info_model.dart';
 import '../style/theme.dart';
@@ -101,6 +119,14 @@ class CommonFunction {
   // JM
   static LocalAuthentication localAuthentication = LocalAuthentication();
   List<ScripStaticModel> _scripStaticData = [];
+  static String productType;
+  static Map<String, String> productItems;
+
+  static ObservableList<ScripInfoModel> indices;
+
+  static StateSetter setState;
+
+  var formatter = new DateFormat('dd MMM, yy');
 
   static List<MemberData> getMembers(String grType, String grCode) => Dataconstants.memberData.where((element) => element.grType == grType && element.grCode == grCode).toList();
 
@@ -116,7 +142,6 @@ class CommonFunction {
   static void backOfficeTrPlSummary() async {
     String rawData = "${Dataconstants.feUserID}:${Dataconstants.authKey}";
     String bs64 = base64.encode(rawData.codeUnits);
-    //print(bs64);
 
     var res1 = await ITSClient.httpGetDpHoldings(
         "https://mobilepms.jmfonline.in/TrPLSummaryCMFY.svc/TrPLSummaryCMFYGetData?EncryptedParameters=${Dataconstants.feUserID}~~*~~*~~2020-21~~*~~1.0.0.0~~*~~${Dataconstants.feUserID}", bs64);
@@ -155,7 +180,6 @@ class CommonFunction {
     var res1 = await ITSClient.httpGetDpHoldings(
         "https://mobilepms.jmfonline.in/TrPLSummaryCMYTDDetail.svc/TrPLSummaryCMYTDDetailGetData?EncryptedParameters=${Dataconstants.feUserID}~~*~~*~~*~~*~~1.0.0.0~~*~~${Dataconstants.feUserID}",
         bs64);
-
   }
 
   static void getPnlYears() async {
@@ -263,6 +287,12 @@ class CommonFunction {
     return response.body.toString();
   }
 
+  static watchListOperations(requestJson) async {
+    http.Response response = await Dataconstants.itsClient.httpPostWithHeaderNew(BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "Watchlistoperation", requestJson, Dataconstants.loginData.data.jwtToken);
+    //print("insert Watchlist response - ${response.body.toString()}");
+    return response.body.toString();
+  }
+
   static verifyAccountDetails(requestJson) async {
     try {
       http.Response response = await Dataconstants.itsClient.httpPostWithHeaderContentType(BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "VerifyAccountDetails", jsonEncode(requestJson));
@@ -285,6 +315,12 @@ class CommonFunction {
     return response.body.toString();
   }
 
+  static unblockUser(requestJson) async {
+    http.Response response = await Dataconstants.itsClient.httpPostWithHeaderContentType(BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "UnblockUser", json.encode(requestJson));
+    // //log("verify OTP response - ${response.body.toString()}");
+    return response.body.toString();
+  }
+
   static setPassword(requestJson) async {
     http.Response response = await Dataconstants.itsClient.httpPostWithHeaderContentType(BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "SetPassword", json.encode(requestJson));
     // //log("verify OTP response - ${response.body.toString()}");
@@ -298,12 +334,7 @@ class CommonFunction {
 
   static login(requestJson) async {
     // http.Response response = await Dataconstants.itsClient.httpPostWithHeaderContentType(BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "Login", json.encode(requestJson));
-    http.Response response = await Dataconstants.itsClient.httpPostWithHeaderContentType(
-        BrokerInfo.mainUrl
-            + BrokerInfo.ApiVersion
-            + "Login2FA",
-        json.encode(requestJson)
-    );
+    http.Response response = await Dataconstants.itsClient.httpPostWithHeaderContentType(BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "Login2FA", json.encode(requestJson));
     // //log("verify OTP response - ${response.body.toString()}");
     return response.body.toString();
   }
@@ -321,7 +352,7 @@ class CommonFunction {
   }
 
   static setMpin(requestJson) async {
-    http.Response response = await Dataconstants.itsClient.httpPostWithHeader(BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "SetMPin", json.encode(requestJson), Dataconstants.loginData.data.jwtToken);
+    http.Response response = await Dataconstants.itsClient.httpPostWithHeader(BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "SetMPin", requestJson, Dataconstants.loginData.data.jwtToken);
     // //log("verify OTP response - ${response.body.toString()}");
     return response.body.toString();
   }
@@ -330,6 +361,30 @@ class CommonFunction {
     http.Response response = await Dataconstants.itsClient.httpPostWithHeaderContentType(BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "refresh-token", json.encode(requestJson));
     // //log("verify OTP response - ${response.body.toString()}");
     return response.body.toString();
+  }
+
+  static Future<bool> extract7zFile(String filePath) async {
+    // Read the 7z file
+    final bytes = File(filePath).readAsBytesSync();
+    var outputDirPath = await getDatabasesPath();
+    // Decode the archive
+    final archive = ZipDecoder().decodeBytes(bytes);
+    // Extract each file in the archive to the output directory
+    for (final file in archive) {
+      final filePath = '${outputDirPath}/${file.name.toLowerCase()}';
+      if (file.isFile) {
+        final data = file.content as List<int>;
+        File(filePath).writeAsBytesSync(data);
+        final databasePath = join(outputDirPath, "masters.mf");
+        final dbFile = File(databasePath);
+        final masterExists = await dbFile.exists();
+        if (masterExists) await dbFile.delete();
+        dbFile.writeAsBytesSync(data, flush: true);
+      } else {
+        Directory(filePath).create(recursive: true);
+      }
+    }
+    return true;
   }
 
   // static setToken(requestJson) async {
@@ -366,6 +421,7 @@ class CommonFunction {
       var response = await setToken(requestTokenJson);
       //print(response);
     }
+
     //TODO: Login Aakash start
     //print("sdfdsfsdf");
     //TODO: Login Aakash end
@@ -373,15 +429,27 @@ class CommonFunction {
 
   static getLimits() async {
     var requestJson = {"Segment": "ALL"};
+
     // var requestJson = {
     //   "Segment":"ALL",
     //   "Exchange": "",
     //   "Producttype": "ALL"
     // };
 
-    //print("request ${requestJson} --- url ${BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "Limits"}");
     http.Response response = await Dataconstants.itsClient.httpPostWithHeader(BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "Limits", requestJson, Dataconstants.loginData.data.jwtToken);
     return response.body.toString();
+  }
+
+  static payoutResponse() async {
+    var response = await CommonFunction.getMaxpayout({"AccountID": Dataconstants.feUserID, "segment": "ALL", "Sourceid": "MOB", "token": Dataconstants.loginData.data.jwtToken});
+
+    var res = json.decode(response);
+
+    print("res.toString() ${res["maxpayoutamt"]["amount"].toString()}");
+
+    setState(() {
+      Dataconstants.payoutamount = res["maxpayoutamt"]["amount"].toString();
+    });
   }
 
   static orderSettings(requestJson) async {
@@ -418,7 +486,6 @@ class CommonFunction {
   static getBankDetails(requestJson) async {
     http.Response response = await Dataconstants.itsClient.httpPostWithHeaderNew(BrokerInfo.mainUrl + "payment/GetBankDetails", requestJson, Dataconstants.loginData.data.jwtToken);
     // //log("Access token API response - ${response.body.toString()}");
-
     return response.body.toString();
   }
 
@@ -429,14 +496,7 @@ class CommonFunction {
   }
 
   static showBasicToastForJm(String message) {
-    Fluttertoast.showToast(
-        msg: message,
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.CENTER,
-        timeInSecForIosWeb: 1,
-        backgroundColor: Colors.grey,
-        textColor: Colors.black,
-        fontSize: 16.0);
+    Fluttertoast.showToast(msg: message, toastLength: Toast.LENGTH_SHORT, gravity: ToastGravity.CENTER, timeInSecForIosWeb: 1, backgroundColor: Colors.grey, textColor: Colors.black, fontSize: 16.0);
   }
 
   static placeOrder(requestJson) async {
@@ -490,19 +550,61 @@ class CommonFunction {
     return response.body.toString();
   }
 
+  //TODO: PAYOUT
+  static checkMarket(requestJson) async {
+    http.Response response = await Dataconstants.itsClient.httpPostWithHeaderNew(BrokerInfo.mainUrl + "PayOut/checkMarketDays", requestJson, Dataconstants.loginData.data.jwtToken);
+    // log("verify OTP response - ${response.body.toString()}");
+    return response.body.toString();
+  }
+
+  static getMaxpayout(requestJson) async {
+    http.Response response = await Dataconstants.itsClient.httpPostWithHeaderNew(BrokerInfo.mainUrl + "/api/v2/GetMaxPayout", requestJson, Dataconstants.loginData.data.jwtToken);
+    // log("verify OTP response - ${response.body.toString()}" as num);
+    return response.body.toString();
+  }
+
+  static getCollectPayout(requestJson) async {
+    http.Response response = await Dataconstants.itsClient.httpPostWithHeaderNew(BrokerInfo.mainUrl + "PayOut/CollectPayOutRequest", requestJson, Dataconstants.loginData.data.jwtToken);
+    // log("verify OTP response - ${response.body.toString()}");
+    return response.body.toString();
+  }
+
+  static getPayoutDetails(requestJson) async {
+    http.Response response = await Dataconstants.itsClient.httpPostWithHeaderNew(BrokerInfo.mainUrl + "PayOut/GetPayoutDetails", requestJson, Dataconstants.loginData.data.jwtToken);
+    // log("verify OTP response - ${response.body.toString()}");
+    return response.body.toString();
+  }
+
+  // static getPayInDetails(requestJson) async {
+  //   http.Response response = await Dataconstants.itsClient.httpPostWithHeaderNew(BrokerInfo.mainUrl + "PayOut/GetPayoutDetails", requestJson, Dataconstants.loginData.data.jwtToken);
+  //   // log("verify OTP response - ${response.body.toString()}");
+  //   return response.body.toString();
+  // }
+
+  static getPaymentStauts(body) async {
+    http.Response response = await Dataconstants.itsClient.httpPostWithHeader(BrokerInfo.mainUrl + "payment/GetAllPaymentStatus", body, Dataconstants.loginData.data.jwtToken);
+    print("kwyudfgc: ${response.body.toString()}");
+    return response.body.toString();
+  }
+
+  //TODO: PAYOUT
+
   static insertWatchList(requestJson) async {
     http.Response response = await Dataconstants.itsClient.httpPostWithHeader(BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "Watchlistoperation", requestJson, Dataconstants.loginData.data.jwtToken);
     //print("insert Watchlist response - ${response.body.toString()}");
     return response.body.toString();
   }
 
-  static Future<void> getResearchClientStructuredCallEntries() async {
+  static Future<http.Response> getResearchClientStructuredCallEntries() async {
     var requestJson = {};
+
     Dataconstants.researchCallsModel.updateFetchingData(true);
     http.Response response =
         await Dataconstants.itsClient.httpPostWithHeader(BrokerInfo.mainUrl + BrokerInfo.ApiVersion + "GetResearchClientStructuredCallEntries", requestJson, Dataconstants.loginData.data.jwtToken);
     Dataconstants.researchCallsModel.updateFetchingData(false);
     Dataconstants.researchCallsModel.getResearchData(response);
+
+    print(response.body);
     return response;
   }
 
@@ -821,6 +923,10 @@ class CommonFunction {
     List<BiometricType> data = [];
     try {
       if (await localAuthentication.canCheckBiometrics) data = await localAuthentication.getAvailableBiometrics();
+
+      if (data.toString().contains("BiometricType.strong")) {
+        print(data.contains(BiometricType.face));
+      } else {}
     } on PlatformException catch (e) {
       //print(e);
     }
@@ -839,189 +945,235 @@ class CommonFunction {
         ),
         clipBehavior: Clip.antiAliasWithSaveLayer,
         builder: (builder) {
-          return new Container(
-            height: MediaQuery.of(context).size.height * 0.7,
-            color: Colors.transparent, //could change this to Color(0xFF737373),
-            //so you don't have to change MaterialApp canvasColor
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.only(left: 20.0, right: 20.0, top: 20.0),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Market Watch",
-                        style: Utils.fonts(size: 18.0, fontWeight: FontWeight.w500),
-                      ),
-                      SizedBox(
-                        height: 20,
-                      ),
-                      Row(
-                        children: [
-                          SizedBox(
-                            width: 20,
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("Funds", style: Utils.fonts(size: 13.0, color: Utils.greyColor.withOpacity(0.7), fontWeight: FontWeight.w500)),
-                              Obx(() {
-                                return Text(
-                                  LimitController.limitData.value.availableMargin.toString(),
-                                  style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w700),
-                                );
-                              }),
-                              InkWell(
-                                onTap: () {
-                                  Navigator.push(context, MaterialPageRoute(builder: (context) => AddFunds()));
-                                },
-                                child: Text("+ Add Funds", style: Utils.fonts(size: 15.0, fontWeight: FontWeight.w500, color: Utils.mediumGreenColor)),
-                              ),
-                            ],
-                          ),
-                          Spacer(),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("Portfolio", style: Utils.fonts(size: 13.0, color: Utils.greyColor.withOpacity(0.7), fontWeight: FontWeight.w500)),
-                              Text("₹25,65,325.2", style: Utils.fonts(size: 18.0, color: Utils.blackColor)),
-                              Text("37,425.7 (1.65%)", style: Utils.fonts(size: 15.0, fontWeight: FontWeight.w500, color: Utils.mediumGreenColor)),
-                            ],
-                          ),
-                          SizedBox(
-                            width: 20,
-                          ),
-                        ],
-                      ),
-                      SizedBox(
-                        height: 20,
-                      ),
-                      GridView.builder(
-                        physics: NeverScrollableScrollPhysics(),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2),
-                        itemBuilder: (_, index) {
-                          return Observer(builder: (context) {
-                            return Padding(
-                              padding: const EdgeInsets.all(12.0),
-                              child: InkWell(
-                                onTap: () async {
-                                  if (Dataconstants.marketWatchList[index].name.toString() == "Nifty Bank") {
-                                    CommonFunction.firebaseEvent(
-                                      clientCode: "dummy",
-                                      device_manufacturer: Dataconstants.deviceName,
-                                      device_model: Dataconstants.devicemodel,
-                                      eventId: "6.0.6.0.0",
-                                      eventLocation: "body",
-                                      eventMetaData: "dummy",
-                                      eventName: "bank_nifty",
-                                      os_version: Dataconstants.osName,
-                                      location: "dummy",
-                                      eventType: "Click",
-                                      sessionId: "dummy",
-                                      platform: Platform.isAndroid ? 'Android' : 'iOS',
-                                      screenName: "guest user dashboard",
-                                      serverTimeStamp: DateTime.now().toString(),
-                                      source_metadata: "dummy",
-                                      subType: "card",
-                                    );
-                                  }
-                                  if (Dataconstants.marketWatchList[index].name.toString() == "NIFTY") {
-                                    CommonFunction.firebaseEvent(
-                                      clientCode: "dummy",
-                                      device_manufacturer: Dataconstants.deviceName,
-                                      device_model: Dataconstants.devicemodel,
-                                      eventId: "6.0.4.0.0",
-                                      eventLocation: "body",
-                                      eventMetaData: "dummy",
-                                      eventName: "nifty",
-                                      os_version: Dataconstants.osName,
-                                      location: "dummy",
-                                      eventType: "Click",
-                                      sessionId: "dummy",
-                                      platform: Platform.isAndroid ? 'Android' : 'iOS',
-                                      screenName: "guest user dashboard",
-                                      serverTimeStamp: DateTime.now().toString(),
-                                      source_metadata: "dummy",
-                                      subType: "card",
-                                    );
-                                  }
-                                  if (Dataconstants.marketWatchList[index].name.toString() == "USDINR") {
-                                    CommonFunction.firebaseEvent(
-                                      clientCode: "dummy",
-                                      device_manufacturer: Dataconstants.deviceName,
-                                      device_model: Dataconstants.devicemodel,
-                                      eventId: "6.0.7.0.0",
-                                      eventLocation: "body",
-                                      eventMetaData: "dummy",
-                                      eventName: "usd_inr",
-                                      os_version: Dataconstants.osName,
-                                      location: "dummy",
-                                      eventType: "Click",
-                                      sessionId: "dummy",
-                                      platform: Platform.isAndroid ? 'Android' : 'iOS',
-                                      screenName: "guest user dashboard",
-                                      serverTimeStamp: DateTime.now().toString(),
-                                      source_metadata: "dummy",
-                                      subType: "card",
-                                    );
-                                  }
-                                },
-                                child: Container(
-                                  decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.circular(10.0)),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(24.0),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        FittedBox(
-                                          child: Text(Dataconstants.marketWatchList[index].name.toString(), style: Utils.fonts(size: 13.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
-                                        ),
-                                        FittedBox(
-                                          child: Observer(
-                                              builder: (_) => Text(
-                                                  Dataconstants.marketWatchList[index].close == 0
-                                                      ? Dataconstants.marketWatchList[index].prevDayClose.toStringAsFixed(2)
-                                                      : Dataconstants.marketWatchList[index].close.toStringAsFixed(2),
-                                                  style: Utils.fonts(size: 15.0, color: Utils.blackColor))),
-                                        ),
-                                        FittedBox(
+          return new StatefulBuilder(builder: (BuildContext context, StateSetter setState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.7,
+              color: Colors.transparent, //could change this to Color(0xFF737373),
+              //so you don't have to change MaterialApp canvasColor
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 20.0, right: 20.0, top: 20.0),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Market ",
+                          style: Utils.fonts(size: 18.0, fontWeight: FontWeight.w500),
+                        ),
+                        SizedBox(
+                          height: 20,
+                        ),
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: 20,
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text("Funds", style: Utils.fonts(size: 13.0, color: Utils.greyColor.withOpacity(0.7), fontWeight: FontWeight.w500)),
+                                Obx(() {
+                                  return Text(
+                                    LimitController.limitData.value.availableMargin.toString(),
+                                    style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w700),
+                                  );
+                                }),
+                                InkWell(
+                                  onTap: () {
+                                    Navigator.push(context, MaterialPageRoute(builder: (context) => AddFunds()));
+                                  },
+                                  child: Text("+ Add Funds", style: Utils.fonts(size: 15.0, fontWeight: FontWeight.w500, color: Utils.mediumGreenColor)),
+                                ),
+                              ],
+                            ),
+                            Spacer(),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text("Portfolio", style: Utils.fonts(size: 13.0, color: Utils.greyColor.withOpacity(0.7), fontWeight: FontWeight.w500)),
+                                Text("₹${HoldingController.totalVal2.value.toStringAsFixed(2)}",
+                                    style: Utils.fonts(
+                                      size: 18.0,
+                                    )),
+                                Text("37,425.7 (1.65%)", style: Utils.fonts(size: 15.0, fontWeight: FontWeight.w500, color: Utils.mediumGreenColor)),
+                              ],
+                            ),
+                            SizedBox(
+                              width: 20,
+                            ),
+                          ],
+                        ),
+                        SizedBox(
+                          height: 20,
+                        ),
+                        GridView.builder(
+                          physics: NeverScrollableScrollPhysics(),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2),
+                          itemCount: Dataconstants.marketWatchList.length,
+                          shrinkWrap: true,
+                          itemBuilder: (_, index1) {
+                            return Observer(builder: (context) {
+                              return Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: InkWell(
+                                  onLongPress: () {
+                                    return showModalBottomSheet(
+                                      context: context,
+                                      builder: (context) => ListView.builder(
+                                          itemCount: Dataconstants.indicesMarketWatchListener.watchList.length,
+                                          shrinkWrap: true,
+                                          itemBuilder: (context, index2) => Column(children: [
+                                                ListTile(
+                                                  onTap: () {
+                                                    // setState((){
+                                                    //   Dataconstants.marketWatchList[index1] = (Dataconstants.indicesMarketWatchListener.watchList[index2]);
+                                                    // });
+                                                    Dataconstants.scripInfoModelInsert = null;
+                                                    Dataconstants.scripInfoModelInsert = Dataconstants.indicesMarketWatchListener.watchList[index2];
+
+                                                    Dataconstants.marketWatchList[index1] = Dataconstants.scripInfoModelInsert;
+                                                    print(Dataconstants.marketWatchList[index1]);
+                                                    print(Dataconstants.scripInfoModelInsert);
+                                                    Navigator.of(context).pop();
+                                                  },
+                                                  // leading: Icon(
+                                                  //
+                                                  //
+                                                  // ),
+                                                  title: Text(
+                                                    Dataconstants.indicesMarketWatchListener.watchList[index2].name,
+                                                  ),
+                                                ),
+                                                Divider(
+                                                  height: 1,
+                                                )
+                                              ])),
+                                    ).then((value) => {setState(() {})});
+                                  },
+                                  onTap: () async {
+                                    if (Dataconstants.marketWatchList[index1].name.toString() == "Nifty Bank") {
+                                      CommonFunction.firebaseEvent(
+                                        clientCode: "dummy",
+                                        device_manufacturer: Dataconstants.deviceName,
+                                        device_model: Dataconstants.devicemodel,
+                                        eventId: "6.0.6.0.0",
+                                        eventLocation: "body",
+                                        eventMetaData: "dummy",
+                                        eventName: "bank_nifty",
+                                        os_version: Dataconstants.osName,
+                                        location: "dummy",
+                                        eventType: "Click",
+                                        sessionId: "dummy",
+                                        platform: Platform.isAndroid ? 'Android' : 'iOS',
+                                        screenName: "guest user dashboard",
+                                        serverTimeStamp: DateTime.now().toString(),
+                                        source_metadata: "dummy",
+                                        subType: "card",
+                                      );
+                                    }
+                                    if (Dataconstants.marketWatchList[index1].name.toString() == "NIFTY") {
+                                      CommonFunction.firebaseEvent(
+                                        clientCode: "dummy",
+                                        device_manufacturer: Dataconstants.deviceName,
+                                        device_model: Dataconstants.devicemodel,
+                                        eventId: "6.0.4.0.0",
+                                        eventLocation: "body",
+                                        eventMetaData: "dummy",
+                                        eventName: "nifty",
+                                        os_version: Dataconstants.osName,
+                                        location: "dummy",
+                                        eventType: "Click",
+                                        sessionId: "dummy",
+                                        platform: Platform.isAndroid ? 'Android' : 'iOS',
+                                        screenName: "guest user dashboard",
+                                        serverTimeStamp: DateTime.now().toString(),
+                                        source_metadata: "dummy",
+                                        subType: "card",
+                                      );
+                                    }
+                                    if (Dataconstants.marketWatchList[index1].name.toString() == "USDINR") {
+                                      CommonFunction.firebaseEvent(
+                                        clientCode: "dummy",
+                                        device_manufacturer: Dataconstants.deviceName,
+                                        device_model: Dataconstants.devicemodel,
+                                        eventId: "6.0.7.0.0",
+                                        eventLocation: "body",
+                                        eventMetaData: "dummy",
+                                        eventName: "usd_inr",
+                                        os_version: Dataconstants.osName,
+                                        location: "dummy",
+                                        eventType: "Click",
+                                        sessionId: "dummy",
+                                        platform: Platform.isAndroid ? 'Android' : 'iOS',
+                                        screenName: "guest user dashboard",
+                                        serverTimeStamp: DateTime.now().toString(),
+                                        source_metadata: "dummy",
+                                        subType: "card",
+                                      );
+                                    }
+                                    Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (context) => ScriptInfo(
+                                                CommonFunction.getScripDataModel(exch: Dataconstants.marketWatchList[index1].exch, exchCode: Dataconstants.marketWatchList[index1].exchCode), false)));
+                                  },
+                                  child: Container(
+                                    decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.circular(10.0)),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(24.0),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          FittedBox(
+                                            child: Text(Dataconstants.marketWatchList[index1].name.toString(), style: Utils.fonts(size: 13.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
+                                          ),
+                                          FittedBox(
                                             child: Observer(
-                                          builder: (_) => Text(
-                                              Dataconstants.marketWatchList[index].priceChangeText.toString() + " " + Dataconstants.marketWatchList[index].percentChangeText.toString(),
-                                              style: Utils.fonts(size: 13.0, color: Dataconstants.marketWatchList[index].percentChange >= 0 ? ThemeConstants.buyColor : ThemeConstants.sellColor)),
-                                        )),
-                                        SizedBox(
-                                          height: 10,
-                                        ),
-                                        // SmallSimpleLineChart(
-                                        //   seriesList: Dataconstants
-                                        //       .marketWatchList[index]
-                                        //       .dataPoint[15],
-                                        //   prevClose: Dataconstants
-                                        //       .marketWatchList[index]
-                                        //       .prevDayClose,
-                                        //   name: Dataconstants
-                                        //       .marketWatchList[index].name,
-                                        // )
-                                      ],
+                                                builder: (_) => Text(
+                                                    Dataconstants.marketWatchList[index1].close == 0
+                                                        ? Dataconstants.marketWatchList[index1].prevDayClose.toStringAsFixed(2)
+                                                        : Dataconstants.marketWatchList[index1].close.toStringAsFixed(2),
+                                                    style: Utils.fonts(
+                                                      size: 15.0,
+                                                    ))),
+                                          ),
+                                          FittedBox(
+                                              child: Observer(
+                                            builder: (_) => Text(
+                                                Dataconstants.marketWatchList[index1].priceChangeText.toString() + " " + Dataconstants.marketWatchList[index1].percentChangeText.toString(),
+                                                style: Utils.fonts(size: 13.0, color: Dataconstants.marketWatchList[index1].percentChange >= 0 ? ThemeConstants.buyColor : ThemeConstants.sellColor)),
+                                          )),
+                                          SizedBox(
+                                            height: 10,
+                                          ),
+                                          // SmallSimpleLineChart(
+                                          //   seriesList: Dataconstants
+                                          //       .marketWatchList[index]
+                                          //       .dataPoint[15],
+                                          //   prevClose: Dataconstants
+                                          //       .marketWatchList[index]
+                                          //       .prevDayClose,
+                                          //   name: Dataconstants
+                                          //       .marketWatchList[index].name,
+                                          // )
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            );
-                          });
-                        },
-                        itemCount: Dataconstants.marketWatchList.length,
-                        shrinkWrap: true,
-                      )
-                    ],
+                              );
+                            });
+                          },
+                        )
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          );
+            );
+          });
         });
   }
 
@@ -1147,6 +1299,71 @@ class CommonFunction {
     stockItems['Cash'].addAll(eqCombined);
     for (var i = 0; i < stockItems["Cash"].length; i++) {
       if (stockItems["Cash"][i].name.toString().toUpperCase() == "NIFTY BANK") return stockItems["Cash"][i];
+    }
+  }
+
+  static getPaymentAccessTokenFund() async {
+    var header = {"application": "Intellect"};
+
+    var stringResponse = await CommonFunction.getPaymentAccessToken(header);
+
+    var jsonResponse = jsonDecode(stringResponse);
+
+    print("Get access token: ${jsonResponse}");
+
+    Dataconstants.fundstoken = await jsonResponse['data'];
+
+    // getBankdetails();
+
+    await Dataconstants.bankDetailsController.getBankDetails();
+
+    // getItems();
+
+    print(Dataconstants.fundstoken);
+
+    // getBankdetails();
+
+    return Dataconstants.fundstoken;
+  }
+
+  static getLastDates(int type) {
+    try {
+      var todayDate = DateTime.now();
+      var last30Days = new DateTime(todayDate.year, todayDate.month - 1, todayDate.day);
+      var last10Days = new DateTime(todayDate.year, todayDate.month, todayDate.day - 10);
+      productType = 'Last 10 Days';
+      productItems = {
+        'Last 30 Days': last30Days.toString(),
+        'Last 10 Days': last10Days.toString(),
+      };
+      FundTransactionControlller.getFundTransactionListItems.clear();
+      type == 1
+          ? Dataconstants.fundTransactionController
+              .getPayoutRequest(fromdate: last10Days.toString().split(" ")[0], todate: DateTime.now().toString().split(" ")[0], token: Dataconstants.fundstoken, payType: 3)
+          : Dataconstants.payInController.getPayInRequest(fromdate: last10Days.toString().split(" ")[0], todate: DateTime.now().toString().split(" ")[0], token: Dataconstants.fundstoken, payType: 2);
+    } catch (e, s) {
+      print(e);
+    }
+  }
+
+  static getpaymentstatus() async {
+    try {
+      var header = {
+        "from": "2022-11-10",
+        "to": "2022-11-16",
+        "payType": "2",
+        "token": Dataconstants.fundstoken,
+      };
+
+      var stringResponse = await CommonFunction.getPaymentStauts(header);
+
+      var jsonResponse = jsonDecode(stringResponse);
+
+      if (jsonResponse == null || jsonResponse == '') {
+        return;
+      }
+    } catch (e) {
+      print(e);
     }
   }
 
@@ -1388,11 +1605,7 @@ class CommonFunction {
               ),
               Text(
                 "Logout from Blink Trade",
-                style: Utils.fonts(
-                  size: 18.0,
-                  fontWeight: FontWeight.w600,
-                  color: Utils.blackColor,
-                ),
+                style: Utils.fonts(size: 18.0, fontWeight: FontWeight.w600, color: Utils.blackColor),
               ),
               const SizedBox(
                 height: 15,
@@ -1451,7 +1664,6 @@ class CommonFunction {
                   style: Utils.fonts(
                     size: 18.0,
                     fontWeight: FontWeight.w600,
-                    color: Utils.blackColor,
                   ),
                 ),
                 const SizedBox(
@@ -1623,7 +1835,6 @@ class CommonFunction {
                 style: Utils.fonts(
                   size: 18.0,
                   fontWeight: FontWeight.w600,
-                  color: Utils.blackColor,
                 ),
               ),
               const SizedBox(
@@ -1643,7 +1854,6 @@ class CommonFunction {
                       style: Utils.fonts(
                         size: 12.0,
                         fontWeight: FontWeight.w500,
-                        color: Utils.blackColor,
                       ),
                     ),
                     TextSpan(
@@ -1710,7 +1920,6 @@ class CommonFunction {
                 style: Utils.fonts(
                   size: 16.0,
                   fontWeight: FontWeight.w200,
-                  color: Utils.blackColor,
                 ),
               ),
               const SizedBox(
@@ -1721,7 +1930,6 @@ class CommonFunction {
                 style: Utils.fonts(
                   size: 22.0,
                   fontWeight: FontWeight.w600,
-                  color: Utils.blackColor,
                 ),
               ),
               const SizedBox(
@@ -1805,7 +2013,6 @@ class CommonFunction {
                 style: Utils.fonts(
                   size: 22.0,
                   fontWeight: FontWeight.w600,
-                  color: Utils.blackColor,
                 ),
               ),
               const SizedBox(
@@ -1818,15 +2025,12 @@ class CommonFunction {
                   style: Utils.fonts(
                     size: 16.0,
                     fontWeight: FontWeight.w200,
-                    color: Utils.blackColor,
                   ),
                 ),
               ),
-
               const SizedBox(
                 height: 30,
               ),
-
               saveAndCancelButton(
                   SaveText: "Allow",
                   cancelText: "Cancel",
@@ -1839,7 +2043,6 @@ class CommonFunction {
                       InAppSelection.fingerPrintEnabled = true;
                       prefs.setBool('FingerprintEnabled', true);
                     } else {
-
                       // ScaffoldMessenger.of(context).showSnackBar(
                       //   SnackBar(
                       //     backgroundColor: Utils.greyColor,
@@ -1848,7 +2051,6 @@ class CommonFunction {
                       //   );
                       // );
                       CommonFunction.showBasicToast("Biometric is not enabled in your device.");
-
                     }
 
                     Navigator.pop(context);
@@ -1859,7 +2061,6 @@ class CommonFunction {
                     InAppSelection.isBiometricEnable = true;
                     prefs.setBool('BiometricEnabled', true);
                   },
-
                   cancelCall: () async {
                     SharedPreferences prefs = await SharedPreferences.getInstance();
                     prefs.setBool('BiometricEnabled', false);
@@ -1868,11 +2069,7 @@ class CommonFunction {
                     InAppSelection.fingerPrintEnabled = false;
 
                     CommonFunction.setUsernamePass(
-                        userName: Dataconstants.feUserID,
-                        password: Dataconstants.feUserPassword1,
-                        accessPin: Dataconstants.confirmMPin,
-                        biometricCode: Dataconstants.biometriccode
-                    );
+                        userName: Dataconstants.feUserID, password: Dataconstants.feUserPassword1, accessPin: Dataconstants.confirmMPin, biometricCode: Dataconstants.biometriccode);
                     // CommonFunction.bottomSheet(context,"SETMPIN");
                     Navigator.pop(context);
                     if (comingFrom != 'validateMPIN')
@@ -1883,8 +2080,7 @@ class CommonFunction {
                               message: 'SUCCESS',
                             ),
                           ),
-                          (route) => false
-                      );
+                          (route) => false);
                   }),
               const SizedBox(
                 height: 15,
@@ -1913,7 +2109,6 @@ class CommonFunction {
                 style: Utils.fonts(
                   size: 16.0,
                   fontWeight: FontWeight.w200,
-                  color: Utils.blackColor,
                 ),
               ),
               const SizedBox(
@@ -1924,7 +2119,6 @@ class CommonFunction {
                 style: Utils.fonts(
                   size: 22.0,
                   fontWeight: FontWeight.w600,
-                  color: Utils.blackColor,
                 ),
               ),
               const SizedBox(
@@ -1966,7 +2160,6 @@ class CommonFunction {
             ],
           );
         } else if (title == 'Order Settings') {
-
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
             child: SingleChildScrollView(
@@ -2261,7 +2454,10 @@ class CommonFunction {
                                           borderRadius: BorderRadius.circular(5),
                                           color: _isCash ? Utils.brightGreenColor.withOpacity(0.4) : Colors.transparent,
                                         ),
-                                        child: Text('EQUITY', style: Utils.fonts(size: 12.0, color: Utils.blackColor)),
+                                        child: Text('EQUITY',
+                                            style: Utils.fonts(
+                                              size: 12.0,
+                                            )),
                                       ),
                                     ),
                                   ),
@@ -2280,7 +2476,10 @@ class CommonFunction {
                                           borderRadius: BorderRadius.circular(5),
                                           color: _isFuture ? Utils.brightGreenColor.withOpacity(0.4) : Colors.transparent,
                                         ),
-                                        child: Text('FUTURE', style: Utils.fonts(size: 12.0, color: Utils.blackColor)),
+                                        child: Text('FUTURE',
+                                            style: Utils.fonts(
+                                              size: 12.0,
+                                            )),
                                       ),
                                     ),
                                   ),
@@ -2299,7 +2498,10 @@ class CommonFunction {
                                           borderRadius: BorderRadius.circular(5),
                                           color: _isOption ? Utils.brightGreenColor.withOpacity(0.4) : Colors.transparent,
                                         ),
-                                        child: Text('OPTION', style: Utils.fonts(size: 12.0, color: Utils.blackColor)),
+                                        child: Text('OPTION',
+                                            style: Utils.fonts(
+                                              size: 12.0,
+                                            )),
                                       ),
                                     ),
                                   ),
@@ -2717,33 +2919,6 @@ class CommonFunction {
     return filePath;
   }
 
-  //TODO: PAYOUT
-  static checkMarket(requestJson) async {
-    http.Response response = await Dataconstants.itsClient.httpPostWithHeaderNew(BrokerInfo.mainUrl + "PayOut/checkMarketDays", requestJson, Dataconstants.loginData.data.jwtToken);
-    // //log("verify OTP response - ${response.body.toString()}");
-    return response.body.toString();
-  }
-
-  static getMaxpayout(requestJson) async {
-    http.Response response = await Dataconstants.itsClient.httpPostWithHeaderNew(BrokerInfo.mainUrl + "PayOut/GetMaxPayout", requestJson, Dataconstants.loginData.data.jwtToken);
-    // //log("verify OTP response - ${response.body.toString()}");
-    return response.body.toString();
-  }
-
-  static getCollectPayout(requestJson) async {
-    http.Response response = await Dataconstants.itsClient.httpPostWithHeaderNew(BrokerInfo.mainUrl + "PayOut/CollectPayOutRequest", requestJson, Dataconstants.loginData.data.jwtToken);
-    // //log("verify OTP response - ${response.body.toString()}");
-    return response.body.toString();
-  }
-
-  static getPayoutDetails(requestJson) async {
-    http.Response response = await Dataconstants.itsClient.httpPostWithHeaderNew(BrokerInfo.mainUrl + "PayOut/GetPayoutDetails", requestJson, Dataconstants.loginData.data.jwtToken);
-    // //log("verify OTP response - ${response.body.toString()}");
-    return response.body.toString();
-  }
-
-  //TODO: PAYOUT
-
   static aliceLogging({String link, var payload, var headers, Duration timeoutDuration = const Duration(seconds: 10)}) async {
     var response;
     if (headers != null) {
@@ -3020,14 +3195,7 @@ class CommonFunction {
     //   toastDuration: Duration(seconds: seconds),
     // );
     Fluttertoast.showToast(
-        msg: message,
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.CENTER,
-        timeInSecForIosWeb: seconds,
-        backgroundColor: Colors.grey,
-        textColor: Colors.black,
-        fontSize: 16.0
-    );
+        msg: message, toastLength: Toast.LENGTH_SHORT, gravity: ToastGravity.CENTER, timeInSecForIosWeb: seconds, backgroundColor: Colors.grey, textColor: Colors.black, fontSize: 16.0);
   }
 
   static void showBasicKycToast(String message, [int seconds = 5]) {
@@ -5225,7 +5393,16 @@ class CommonFunction {
 
 class HomeWidgets {
   static ScrollController controller = ScrollController();
-  static int otherAssetTab = 1, topPerformingIndustriesTab = 1, topGainersTab = 1, topLosersTab = 2, mostActiveTab = 1, eventsTab = 1, touchedIndex = -1, ipoTab = 1, optionChainVar = 1;
+  static int otherAssetTab = 1,
+      topPerformingIndustriesTab = 1,
+      circuitBreakersTab = 1,
+      topGainersTab = 1,
+      topLosersTab = 2,
+      mostActiveTab = 1,
+      eventsTab = 1,
+      touchedIndex = -1,
+      ipoTab = 1,
+      optionChainVar = 1;
   static List globalTopGainersVariable = [], globalTopLosersVariable = [], globalMostActiveVariable = [];
   static DateFormat formatter = DateFormat('dd/MM/yyyy');
   static var totalMarketValueNifty, totalMarketValueSensex;
@@ -5235,7 +5412,8 @@ class HomeWidgets {
       mostActiveExpanded = false,
       ipoExpanded = false,
       globalIndicesExpanded = false,
-      topPerformingIndustriesExpanded = false;
+      topPerformingIndustriesExpanded = false,
+      nifty = true;
   static List<int> optionDates;
   static var searchList = [], newData = <Widget>[];
   static var searchValue = "";
@@ -5253,8 +5431,20 @@ class HomeWidgets {
 
   static assignWidgets(BuildContext context) {
     var theme = Theme.of(context);
-    var dashboardData = InAppSelection.dashboardSettings.toString();
-    var decodedlist = json.decode(dashboardData);
+    var dashboardElements = [
+      ["1", "Key Indices", true],
+      ["2", "Trending Stocks", true],
+      ["3", "Top Performing Industries", true],
+      ["4", "Top Gainers", true],
+      ["5", "Most Active", true],
+      ["6", "Top Losers", true],
+      ["7", "Global Indices", true]
+    ];
+
+    var dashboardJsonElements = jsonEncode(dashboardElements);
+    var dashboardData = Dataconstants.isGuestUser ? dashboardJsonElements : InAppSelection.dashboardSettings.toString();
+
+    var decodedlist = jsonDecode(dashboardData);
     newData = [];
     newData.add(Container(
       height: 2.0,
@@ -5469,13 +5659,18 @@ class HomeWidgets {
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   Text(
                     "Key Indices",
-                    style: Utils.fonts(size: 16.0, color: Utils.blackColor),
+                    style: Utils.fonts(size: 16.0),
                   ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   SizedBox(
                     height: 14.0,
                   ),
@@ -5483,125 +5678,236 @@ class HomeWidgets {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
-                          child: Container(
-                            decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 10.0, right: 30.0, top: 12.0, bottom: 12.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Sensex",
-                                    style: Utils.fonts(size: 12.0, color: Utils.greyColor.withOpacity(0.7)),
-                                  ),
-                                  Observer(
-                                    builder: (_) => Text(
-                                      Dataconstants.indicesListener.indices2.close.toStringAsFixed(2),
-                                      style: Utils.fonts(size: 13.0, color: Utils.blackColor),
+                        InkWell(
+                          onTap: () async {
+
+                            ScripInfoModel scripinfo = CommonFunction.getScripDataModel(
+                              exch: "B",
+                              exchCode: 999901,
+                            );
+
+                            await Dataconstants.iqsClient.sendLTPRequest(scripinfo,true);
+                            Dataconstants.iqsClient.sendMarketDepthRequest("B",999901, true);
+
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => ScriptInfo(
+                                        scripinfo,
+                                        true)));
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: Container(
+                              width: MediaQuery.of(context).size.width * 0.36,
+                              decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 10.0, right: 20.0, top: 12.0, bottom: 12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      "Sensex",
+                                      style: Utils.fonts(
+                                        size: 12.0,
+                                      ),
                                     ),
-                                  ),
-                                  Observer(
-                                    builder: (_) => Row(
-                                      children: [
-                                        Icon(
-                                          Dataconstants.indicesListener.indices2.percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
-                                          color: Dataconstants.indicesListener.indices2.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor,
+                                    Observer(
+                                      builder: (_) => Text(
+                                        Dataconstants.indicesListener.indices2.close == 0.0
+                                            ? Dataconstants.indicesListener.indices2.prevDayClose.toStringAsFixed(2)
+                                            : Dataconstants.indicesListener.indices2.close.toStringAsFixed(2),
+                                        style: Utils.fonts(
+                                          size: 12.0,
                                         ),
-                                        Text(
-                                          "${Dataconstants.indicesListener.indices2.percentChange.toStringAsFixed(2)}%",
-                                          style: Utils.fonts(
-                                            size: 12.0,
+                                      ),
+                                    ),
+                                    Observer(
+                                      builder: (_) => Row(
+                                        children: [
+                                          Text(
+                                            Dataconstants.indicesListener.indices2.close == 0.0
+                                                ? "0.0"
+                                                : (Dataconstants.indicesListener.indices2.close - Dataconstants.indicesListener.indices2.prevDayClose).toStringAsFixed(2),
+                                            style: Utils.fonts(
+                                              size: 10.0,
+                                              color: Dataconstants.indicesListener.indices2.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor,
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.only(left: 8.0),
+                                            child: Text(
+                                              "${Dataconstants.indicesListener.indices2.percentChange.toStringAsFixed(2)}%",
+                                              style: Utils.fonts(
+                                                size: 10.0,
+                                                color: Dataconstants.indicesListener.indices2.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor,
+                                              ),
+                                            ),
+                                          ),
+                                          Icon(
+                                            Dataconstants.indicesListener.indices2.percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
                                             color: Dataconstants.indicesListener.indices2.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor,
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
                         ),
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
-                          child: Container(
-                            decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 10.0, right: 30.0, top: 12.0, bottom: 12.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Nifty",
-                                    style: Utils.fonts(size: 12.0, color: Utils.greyColor.withOpacity(0.7)),
-                                  ),
-                                  Observer(
-                                    builder: (_) => Text(
-                                      Dataconstants.indicesListener.indices1.close.toStringAsFixed(2),
-                                      style: Utils.fonts(size: 15.0, color: Utils.blackColor),
+                        InkWell(
+                          onTap: () {
+
+                            ScripInfoModel scripinfo = CommonFunction.getScripDataModel(
+                              exch: "N",
+                              exchCode: 26000,
+                            );
+
+                            Dataconstants.iqsClient.sendLTPRequest(scripinfo,true);
+
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => ScriptInfo(
+                                      scripinfo, true,
+                                        )));
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: Container(
+                              width: MediaQuery.of(context).size.width * 0.36,
+                              decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 10.0, right: 20.0, top: 12.0, bottom: 12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      "Nifty",
+                                      style: Utils.fonts(
+                                        size: 12.0,
+                                      ),
                                     ),
-                                  ),
-                                  Observer(
-                                    builder: (_) => Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Dataconstants.indicesListener.indices1.percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
-                                          color: Dataconstants.indicesListener.indices1.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor,
+                                    Observer(
+                                      builder: (_) => Text(
+                                        Dataconstants.indicesListener.indices1.close == 0.0
+                                            ? Dataconstants.indicesListener.indices1.prevDayClose.toStringAsFixed(2)
+                                            : Dataconstants.indicesListener.indices1.close.toStringAsFixed(2),
+                                        style: Utils.fonts(
+                                          size: 12.0,
                                         ),
-                                        Observer(
-                                          builder: (_) => Text(
-                                            "${Dataconstants.indicesListener.indices1.percentChange.toStringAsFixed(2)}%",
-                                            style: Utils.fonts(size: 12.0, color: Dataconstants.indicesListener.indices1.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor),
+                                      ),
+                                    ),
+                                    Observer(
+                                      builder: (_) => Row(
+                                        children: [
+                                          Text(
+                                            Dataconstants.indicesListener.indices1.close == 0.0
+                                                ? "0.0"
+                                                : (Dataconstants.indicesListener.indices1.close - Dataconstants.indicesListener.indices1.prevDayClose).toStringAsFixed(2),
+                                            style: Utils.fonts(
+                                              size: 10.0,
+                                              color: Dataconstants.indicesListener.indices1.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                          Padding(
+                                            padding: const EdgeInsets.only(left: 8.0),
+                                            child: Text(
+                                              "${Dataconstants.indicesListener.indices1.percentChange.toStringAsFixed(2)}%",
+                                              style: Utils.fonts(
+                                                size: 10.0,
+                                                color: Dataconstants.indicesListener.indices1.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor,
+                                              ),
+                                            ),
+                                          ),
+                                          Icon(
+                                            Dataconstants.indicesListener.indices1.percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
+                                            color: Dataconstants.indicesListener.indices1.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor,
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
                         ),
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
-                          child: Container(
-                            decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 10.0, right: 30.0, top: 12.0, bottom: 12.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Bank Nifty",
-                                    style: Utils.fonts(size: 12.0, color: Utils.greyColor.withOpacity(0.7)),
-                                  ),
-                                  Observer(
-                                    builder: (_) => Text(
-                                      Dataconstants.indicesListener.indices3.close.toStringAsFixed(2),
-                                      style: Utils.fonts(size: 12.0, color: Utils.blackColor),
+                        InkWell(
+                          onTap: () {
+
+                            ScripInfoModel scripinfo = CommonFunction.getScripDataModel(
+                              exch: "N",
+                              exchCode: 26009,
+                            );
+
+                            Dataconstants.iqsClient.sendLTPRequest(scripinfo,true);
+
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => ScriptInfo(
+                                      scripinfo,
+                                          true,
+                                        )));
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: Container(
+                              width: MediaQuery.of(context).size.width * 0.36,
+                              decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 10.0, right: 30.0, top: 12.0, bottom: 12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      "Bank Nifty",
+                                      style: Utils.fonts(size: 12.0),
                                     ),
-                                  ),
-                                  Observer(
-                                    builder: (_) => Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Dataconstants.indicesListener.indices3.percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
-                                          color: Dataconstants.indicesListener.indices3.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor,
+                                    Observer(
+                                      builder: (_) => Text(
+                                        Dataconstants.indicesListener.indices3.close == 0.0
+                                            ? Dataconstants.indicesListener.indices3.prevDayClose.toStringAsFixed(2)
+                                            : Dataconstants.indicesListener.indices3.close.toStringAsFixed(2),
+                                        style: Utils.fonts(
+                                          size: 12.0,
                                         ),
-                                        Observer(
-                                          builder: (_) => Text(
-                                            "${Dataconstants.indicesListener.indices3.percentChange.toStringAsFixed(2)}%",
-                                            style: Utils.fonts(size: 13.0, color: Dataconstants.indicesListener.indices3.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor),
+                                      ),
+                                    ),
+                                    Observer(
+                                      builder: (_) => Row(
+                                        children: [
+                                          Text(
+                                            Dataconstants.indicesListener.indices3.close == 0.0
+                                                ? "0.0"
+                                                : (Dataconstants.indicesListener.indices3.close - Dataconstants.indicesListener.indices3.prevDayClose).toStringAsFixed(2),
+                                            style: Utils.fonts(
+                                              size: 10.0,
+                                              color: Dataconstants.indicesListener.indices3.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                          Padding(
+                                            padding: const EdgeInsets.only(left: 8.0),
+                                            child: Text(
+                                              "${Dataconstants.indicesListener.indices3.percentChange.toStringAsFixed(2)}%",
+                                              style: Utils.fonts(
+                                                size: 10.0,
+                                                color: Dataconstants.indicesListener.indices3.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor,
+                                              ),
+                                            ),
+                                          ),
+                                          Icon(
+                                            Dataconstants.indicesListener.indices3.percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
+                                            color: Dataconstants.indicesListener.indices3.percentChange > 0 ? Utils.mediumGreenColor : Utils.lightRedColor,
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -5642,14 +5948,16 @@ class HomeWidgets {
                         children: [
                           Text(
                             "Portfolio Value",
-                            style: Utils.fonts(size: 14.0, color: Utils.blackColor),
+                            style: Utils.fonts(
+                              size: 14.0,
+                            ),
                           ),
                           SizedBox(
                             height: 5,
                           ),
                           Text(
                             "1,489,540.2",
-                            style: Utils.fonts(size: 20.0, color: Utils.blackColor, fontWeight: FontWeight.w700),
+                            style: Utils.fonts(size: 20.0, fontWeight: FontWeight.w700),
                           )
                         ],
                       ),
@@ -5685,7 +5993,7 @@ class HomeWidgets {
                           ),
                           Text(
                             "10,84,325.9",
-                            style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w700),
+                            style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w700),
                           )
                         ],
                       ),
@@ -5760,7 +6068,7 @@ class HomeWidgets {
                     },
                     child: Text(
                       "Limits",
-                      style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+                      style: Utils.fonts(size: 17.0),
                     ),
                   ),
                   SizedBox(
@@ -5791,73 +6099,87 @@ class HomeWidgets {
               SizedBox(
                 height: 15,
               ),
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  color: Utils.primaryColor.withOpacity(0.1),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Column(
-                        children: [
-                          SizedBox(
-                            height: 5,
-                          ),
-                          Text(
-                            "Available Margin",
-                            style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w400),
-                          ),
-                          SizedBox(
-                            height: 5,
-                          ),
-                          Obx(() {
-                            return Text(
-                              LimitController.limitData.value.availableMargin.toString(),
-                              style: Utils.fonts(size: 18.0, fontWeight: FontWeight.w600),
-                            );
-                          }),
-                          SizedBox(
-                            height: 5,
-                          ),
-                        ],
-                      ),
-                      Column(
-                        children: [
-                          SizedBox(
-                            height: 5,
-                          ),
-                          Text(
-                            "Margin Used",
-                            style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w400),
-                          ),
-                          SizedBox(
-                            height: 5,
-                          ),
-                          Obx(() {
-                            return Text(
-                              LimitController.limitData.value.marginUsed.toString(),
-                              style: Utils.fonts(size: 18.0, fontWeight: FontWeight.w600),
-                            );
-                          }),
-                          SizedBox(
-                            height: 5,
-                          ),
-                          Obx(() {
-                            return Text(
-                              "(${LimitController.limitData.value.marginUsedPercentage} used)".toString(),
-                              style: Utils.fonts(size: 12.0, color: Colors.red, fontWeight: FontWeight.w600),
-                            );
-                          }),
-                          SizedBox(
-                            height: 5,
-                          ),
-                        ],
-                      )
-                    ],
+              InkWell(
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => LimitScreen()));
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: Utils.primaryColor.withOpacity(0.1),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Column(
+                          children: [
+                            SizedBox(
+                              height: 5,
+                            ),
+                            Text(
+                              "Available Margin",
+                              style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w400),
+                            ),
+                            SizedBox(
+                              height: 5,
+                            ),
+                            Obx(() {
+                              return LimitController.isLoading.value
+                                  ? CircularProgressIndicator()
+                                  : Text(
+                                      LimitController.limitData.value.availableMargin.toStringAsFixed(2),
+                                      style: Utils.fonts(size: 18.0, fontWeight: FontWeight.w600),
+                                    );
+                            }),
+                            SizedBox(
+                              height: 5,
+                            ),
+                          ],
+                        ),
+                        Column(
+                          children: [
+                            SizedBox(
+                              height: 5,
+                            ),
+                            Text(
+                              "Margin Used",
+                              style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w400),
+                            ),
+                            SizedBox(
+                              height: 5,
+                            ),
+                            Obx(() {
+                              return LimitController.isLoading.value
+                                  ? CircularProgressIndicator()
+                                  : LimitController.limitData.value == null
+                                      ? Text(
+                                          " ",
+                                          style: Utils.fonts(size: 18.0, fontWeight: FontWeight.w600),
+                                        )
+                                      : Text(
+                                          LimitController.limitData.value.marginUsed.toStringAsFixed(2),
+                                          style: Utils.fonts(size: 18.0, fontWeight: FontWeight.w600),
+                                        );
+                            }),
+                            SizedBox(
+                              height: 5,
+                            ),
+                            Obx(() {
+                              return Text(
+                                "(${LimitController.limitData.value.marginUsedPercentage} used)".toString(),
+                                style: Utils.fonts(size: 12.0, color: Colors.red, fontWeight: FontWeight.w600),
+                              );
+                            }),
+                            SizedBox(
+                              height: 5,
+                            ),
+                          ],
+                        )
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -5887,37 +6209,29 @@ class HomeWidgets {
               children: [
                 Row(
                   children: [
-                    GestureDetector(
-                      onTap: () {
-                        InAppSelection.mainScreenIndex = 3;
-                        Dataconstants.ordersScreenIndex = 1;
-                        setState(() {});
-                        Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                                builder: (_) => MainScreen(
-                                      toChangeTab: false,
-                                    )),
-                            (route) => false);
-                      },
-                      child: Text(
-                        "Positions",
-                        style: Utils.fonts(size: 17.0, color: Utils.blackColor),
-                      ),
+                    Text(
+                      "Positions",
+                      style: Utils.fonts(size: 17.0),
                     ),
                     SizedBox(
                       width: 10,
                     ),
                     GestureDetector(
                         onTap: () {
-                          InAppSelection.mainScreenIndex = 3;
-                          Dataconstants.ordersScreenIndex = 1;
-                          setState(() {});
+                          //
+                          // Dataconstants.ordersScreenIndex = 3;
+                          // setState(() {});
+                          setState(() {
+                            InAppSelection.mainScreenIndex = 3;
+                            Dataconstants.ordersScreenIndex = 2;
+                          });
                           Navigator.of(context).pushAndRemoveUntil(
                               MaterialPageRoute(
                                   builder: (_) => MainScreen(
                                         toChangeTab: false,
                                       )),
                               (route) => false);
+                          // Navigator.push(context, MaterialPageRoute(builder: (context) => JMOrdersScreen(2)));
                         },
                         child: SvgPicture.asset("assets/appImages/arrow_right_circle.svg")),
                     Spacer(),
@@ -5949,7 +6263,7 @@ class HomeWidgets {
                                   ),
                                   Text(
                                     "You have no Open Positions",
-                                    style: Utils.fonts(size: 15.0, fontWeight: FontWeight.w400, color: Colors.grey[600]),
+                                    style: Utils.fonts(size: 15.0, fontWeight: FontWeight.w400),
                                     textAlign: TextAlign.center,
                                   ),
                                   const SizedBox(
@@ -6050,155 +6364,171 @@ class HomeWidgets {
                                   shrinkWrap: true,
                                   itemCount: NetPositionController.openPositionList.length < 3 ? NetPositionController.openPositionList.length : 3,
                                   itemBuilder: (context, index) {
-                                    return Column(
-                                      children: [
-                                        SizedBox(
-                                          height: 10,
-                                        ),
-                                        Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                /* Displaying the Script name */
-                                                Container(
-                                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                                  decoration: BoxDecoration(
-                                                      borderRadius: BorderRadius.all(Radius.circular(5)),
-                                                      color: int.parse(NetPositionController.openPositionList[index].netqty) > 0
-                                                          ? Utils.brightGreenColor
+                                    return InkWell(
+                                      onTap : () {
+                                        Navigator.push(context, MaterialPageRoute(builder: (context) => ScriptInfo(
+                                            CommonFunction.getScripDataModel(
+                                                exch: NetPositionController.openPositionList[index].model.exch,
+                                                exchCode: NetPositionController.openPositionList[index].model.exchCode
+                                            ),false
+                                        )));
+                                      },
+                                      child: Column(
+                                        children: [
+                                          SizedBox(
+                                            height: 10,
+                                          ),
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  /* Displaying the Script name */
+                                                  Container(
+                                                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                                    decoration: BoxDecoration(
+                                                        borderRadius: BorderRadius.all(Radius.circular(5)),
+                                                        color: int.parse(NetPositionController.openPositionList[index].netqty) > 0
+                                                            ? Utils.brightGreenColor
+                                                            : int.parse(NetPositionController.openPositionList[index].netqty) < 0
+                                                                ? Utils.brightRedColor
+                                                                : Utils.greyColor),
+                                                    child: Text(
+                                                      int.parse(NetPositionController.openPositionList[index].netqty) > 0
+                                                          ? "BUY"
                                                           : int.parse(NetPositionController.openPositionList[index].netqty) < 0
-                                                              ? Utils.brightRedColor
-                                                              : Utils.greyColor),
-                                                  child: Text(
-                                                    int.parse(NetPositionController.openPositionList[index].netqty) > 0
-                                                        ? "BUY"
-                                                        : int.parse(NetPositionController.openPositionList[index].netqty) < 0
-                                                            ? "SELL"
-                                                            : 'CLOSE',
-                                                    style: Utils.fonts(color: Utils.whiteColor, size: 10.0, fontWeight: FontWeight.w600),
+                                                              ? "SELL"
+                                                              : 'CLOSE',
+                                                      style: Utils.fonts(color: Utils.whiteColor, size: 10.0, fontWeight: FontWeight.w600),
+                                                    ),
                                                   ),
-                                                ),
-                                                /* Displaying the Script Description */
-                                                Observer(
-                                                  builder: (_) => Row(
+                                                  /* Displaying the Script Description */
+                                                  Observer(
+                                                    builder: (_) => Row(
+                                                      children: [
+                                                        Text("LTP", style: Utils.fonts(color: Utils.greyColor, size: 12.0, fontWeight: FontWeight.w400)),
+                                                        SizedBox(
+                                                          width: 5,
+                                                        ),
+                                                        Text(
+                                                          NetPositionController.openPositionList[index].model.close.toStringAsFixed(NetPositionController.openPositionList[index].model.precision),
+                                                          style: Utils.fonts(color: theme.errorColor, size: 14.0, fontWeight: FontWeight.w600),
+                                                        ),
+                                                        Container(
+                                                          padding: const EdgeInsets.all(0.0),
+                                                          child: Icon(
+                                                            NetPositionController.openPositionList[index].model.close > NetPositionController.openPositionList[index].model.prevTickRate
+                                                                ? Icons.arrow_drop_up_rounded
+                                                                : Icons.arrow_drop_down_rounded,
+                                                            color: NetPositionController.openPositionList[index].model.close > NetPositionController.openPositionList[index].model.prevTickRate
+                                                                ? ThemeConstants.buyColor
+                                                                : ThemeConstants.sellColor,
+                                                          ),
+                                                        )
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(
+                                                height: 5,
+                                              ),
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Text(NetPositionController.openPositionList[index].tradingsymbol.split("-")[0],
+                                                      style: Utils.fonts(
+                                                        size: 16.0,
+                                                        fontWeight: FontWeight.bold,
+                                                      )
+                                                      // TextStyle(fontSize: 13, color: Colors.grey[600]),
+                                                      ),
+                                                  Text(NetPositionController.openPositionList[index].netqty + ' @ ' + NetPositionController.openPositionList[index].avgnetprice,
+                                                      style: Utils.fonts(
+                                                        size: 16.0,
+                                                        fontWeight: FontWeight.bold,
+                                                      )),
+                                                ],
+                                              ),
+                                              // /* Displaying the Script Description */
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Row(
                                                     children: [
-                                                      Text("LTP", style: Utils.fonts(color: Utils.greyColor, size: 12.0, fontWeight: FontWeight.w400)),
-                                                      SizedBox(
+                                                      Text(NetPositionController.openPositionList[index].exchange.toUpperCase(),
+                                                          style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w400, color: Utils.greyColor)),
+                                                      const SizedBox(
                                                         width: 5,
                                                       ),
-                                                      Text(
-                                                        NetPositionController.openPositionList[index].model.close.toStringAsFixed(NetPositionController.openPositionList[index].model.precision),
-                                                        style: Utils.fonts(color: theme.errorColor, size: 14.0, fontWeight: FontWeight.w600),
+                                                      Container(height: 3, width: 3, decoration: BoxDecoration(color: Utils.greyColor, shape: BoxShape.circle)),
+                                                      const SizedBox(
+                                                        width: 5,
                                                       ),
-                                                      Container(
-                                                        padding: const EdgeInsets.all(0.0),
-                                                        child: Icon(
-                                                          NetPositionController.openPositionList[index].model.close > NetPositionController.openPositionList[index].model.prevTickRate
-                                                              ? Icons.arrow_drop_up_rounded
-                                                              : Icons.arrow_drop_down_rounded,
-                                                          color: NetPositionController.openPositionList[index].model.close > NetPositionController.openPositionList[index].model.prevTickRate
-                                                              ? ThemeConstants.buyColor
-                                                              : ThemeConstants.sellColor,
-                                                        ),
-                                                      )
+                                                      Text(NetPositionController.openPositionList[index].producttype.toUpperCase(),
+                                                          style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w400, color: Utils.greyColor)),
                                                     ],
                                                   ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(
-                                              height: 5,
-                                            ),
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Text(NetPositionController.openPositionList[index].tradingsymbol.split("-")[0],
-                                                    style: Utils.fonts(size: 16.0, fontWeight: FontWeight.bold, color: Utils.blackColor)
-                                                    // TextStyle(fontSize: 13, color: Colors.grey[600]),
-                                                    ),
-                                                Text(NetPositionController.openPositionList[index].netqty + ' @ ' + NetPositionController.openPositionList[index].avgnetprice,
-                                                    style: Utils.fonts(size: 16.0, fontWeight: FontWeight.bold, color: Utils.blackColor)),
-                                              ],
-                                            ),
-                                            // /* Displaying the Script Description */
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    Text(NetPositionController.openPositionList[index].exchange.toUpperCase(),
-                                                        style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w400, color: Utils.greyColor)),
-                                                    const SizedBox(
-                                                      width: 5,
-                                                    ),
-                                                    Container(height: 3, width: 3, decoration: BoxDecoration(color: Utils.greyColor, shape: BoxShape.circle)),
-                                                    const SizedBox(
-                                                      width: 5,
-                                                    ),
-                                                    Text(NetPositionController.openPositionList[index].producttype.toUpperCase(),
-                                                        style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w400, color: Utils.greyColor)),
-                                                  ],
-                                                ),
-                                                /* Displaying the price change and percentage change of the script */
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.end,
-                                                  children: [
-                                                    /* Displaying the price change of the script */
-                                                    Observer(
-                                                      builder: (_) => Text(
-                                                          /* If the LTP is zero before or after market time, it is showing zero instead of price change */
-                                                          NetPositionController.openPositionList[index].model.close == 0.00
-                                                              ? "0.00"
-                                                              : NetPositionController.openPositionList[index].model.priceChangeText,
-                                                          style: Utils.fonts(
-                                                            size: 12.0,
-                                                            fontWeight: FontWeight.w600,
-                                                            color: NetPositionController.openPositionList[index].model.priceChange > 0
-                                                                ? ThemeConstants.buyColor
-                                                                : NetPositionController.openPositionList[index].model.priceChange < 0
-                                                                    ? ThemeConstants.sellColor
-                                                                    : theme.textTheme.bodyText1.color,
-                                                          )),
-                                                    ),
-                                                    const SizedBox(
-                                                      width: 5,
-                                                    ),
-                                                    /* Displaying the percentage change of the script */
-                                                    Observer(
-                                                      builder: (_) => Text(
-                                                          /* If the LTP is zero before or after market time, it is showing zero instead of percentof price change */
-                                                          NetPositionController.openPositionList[index].model.close == 0.00
-                                                              ? "(0.00%)"
-                                                              : NetPositionController.openPositionList[index].model.percentChangeText,
-                                                          style: Utils.fonts(
-                                                            size: 12.0,
-                                                            fontWeight: FontWeight.w600,
-                                                            color: NetPositionController.openPositionList[index].model.percentChange > 0
-                                                                ? ThemeConstants.buyColor
-                                                                : NetPositionController.openPositionList[index].model.percentChange < 0
-                                                                    ? ThemeConstants.sellColor
-                                                                    : theme.textTheme.bodyText1.color,
-                                                          )),
-                                                    ),
-                                                  ],
-                                                )
-                                              ],
-                                            ),
-                                            const SizedBox(
-                                              height: 5,
-                                            ),
-                                            // /* Displaying the Script buy sell status */
-                                          ],
-                                        ),
-                                        SizedBox(
-                                          height: 10,
-                                        ),
-                                        const Divider(
-                                          thickness: 1.5,
-                                        )
-                                      ],
+                                                  /* Displaying the price change and percentage change of the script */
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                    children: [
+                                                      /* Displaying the price change of the script */
+                                                      Observer(
+                                                        builder: (_) => Text(
+                                                            /* If the LTP is zero before or after market time, it is showing zero instead of price change */
+                                                            NetPositionController.openPositionList[index].model.close == 0.00
+                                                                ? "0.00"
+                                                                : NetPositionController.openPositionList[index].model.priceChangeText,
+                                                            style: Utils.fonts(
+                                                              size: 12.0,
+                                                              fontWeight: FontWeight.w600,
+                                                              color: NetPositionController.openPositionList[index].model.priceChange > 0
+                                                                  ? ThemeConstants.buyColor
+                                                                  : NetPositionController.openPositionList[index].model.priceChange < 0
+                                                                      ? ThemeConstants.sellColor
+                                                                      : theme.textTheme.bodyText1.color,
+                                                            )),
+                                                      ),
+                                                      const SizedBox(
+                                                        width: 5,
+                                                      ),
+                                                      /* Displaying the percentage change of the script */
+                                                      Observer(
+                                                        builder: (_) => Text(
+                                                            /* If the LTP is zero before or after market time, it is showing zero instead of percentof price change */
+                                                            NetPositionController.openPositionList[index].model.close == 0.00
+                                                                ? "(0.00%)"
+                                                                : NetPositionController.openPositionList[index].model.percentChangeText,
+                                                            style: Utils.fonts(
+                                                              size: 12.0,
+                                                              fontWeight: FontWeight.w600,
+                                                              color: NetPositionController.openPositionList[index].model.percentChange > 0
+                                                                  ? ThemeConstants.buyColor
+                                                                  : NetPositionController.openPositionList[index].model.percentChange < 0
+                                                                      ? ThemeConstants.sellColor
+                                                                      : theme.textTheme.bodyText1.color,
+                                                            )),
+                                                      ),
+                                                    ],
+                                                  )
+                                                ],
+                                              ),
+                                              const SizedBox(
+                                                height: 5,
+                                              ),
+                                              // /* Displaying the Script buy sell status */
+                                            ],
+                                          ),
+                                          SizedBox(
+                                            height: 10,
+                                          ),
+                                          const Divider(
+                                            thickness: 1.5,
+                                          )
+                                        ],
+                                      ),
                                     );
                                   }),
                             ],
@@ -6218,39 +6548,52 @@ class HomeWidgets {
   }
 
   static Widget DpHoldings() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: InkWell(
-            onTap: (){
-              Navigator.push(context, MaterialPageRoute(builder: (context) => Scaffold(body: JMOrdersScreen(true))));
-            },
-            child: Row(
-              children: [
-                Text(
-                  "DP Holdings",
-                  style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+    return StatefulBuilder(
+      builder: (context, setState) => Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: InkWell(
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => Scaffold(body: JMOrdersScreen(1))));
+              },
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    InAppSelection.mainScreenIndex = 3;
+                    Dataconstants.ordersScreenIndex = 3;
+                  });
+                  Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                          builder: (_) => MainScreen(
+                                toChangeTab: false,
+                              )),
+                      (route) => false);
+                },
+                child: Row(
+                  children: [
+                    Text(
+                      "DP Holdings",
+                      style: Utils.fonts(
+                        size: 17.0,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 10,
+                    ),
+                    SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
+                    Spacer(),
+                  ],
                 ),
-                SizedBox(
-                  width: 10,
-                ),
-                SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
-                Spacer(),
-                InkWell(
-                    onTap: () {
-                      HomeWidgets.scrollTop();
-                    },
-                    child: SvgPicture.asset("assets/appImages/markets/up_arrow.svg"))
-              ],
+              ),
             ),
           ),
-        ),
-        SizedBox(
-          height: 15,
-        ),
-        Container(height: 200, width: MediaQuery.of(context).size.width, child: Holdings()),
-      ],
+          SizedBox(
+            height: 15,
+          ),
+          Container(height: 200, width: MediaQuery.of(context).size.width, child: Holdings()),
+        ],
+      ),
     );
   }
 
@@ -6265,7 +6608,9 @@ class HomeWidgets {
                 children: [
                   Text(
                     "JM Baskets",
-                    style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+                    style: Utils.fonts(
+                      size: 17.0,
+                    ),
                   ),
                   SizedBox(
                     width: 10,
@@ -6300,7 +6645,9 @@ class HomeWidgets {
                                   children: [
                                     Text(
                                       "Electric Vehicles",
-                                      style: Utils.fonts(size: 14.0, color: Utils.blackColor),
+                                      style: Utils.fonts(
+                                        size: 14.0,
+                                      ),
                                     ),
                                     SizedBox(
                                       height: 15.0,
@@ -6309,11 +6656,13 @@ class HomeWidgets {
                                       children: [
                                         Text(
                                           "Min. Amt ",
-                                          style: Utils.fonts(size: 12.0, color: Utils.blackColor, fontWeight: FontWeight.w300),
+                                          style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w300),
                                         ),
                                         Text(
                                           "1000",
-                                          style: Utils.fonts(size: 13.0, color: Utils.blackColor),
+                                          style: Utils.fonts(
+                                            size: 13.0,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -6368,7 +6717,9 @@ class HomeWidgets {
                 children: [
                   Text(
                     "My Ongoing SIPs",
-                    style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+                    style: Utils.fonts(
+                      size: 17.0,
+                    ),
                   ),
                   SizedBox(
                     width: 10,
@@ -6417,7 +6768,7 @@ class HomeWidgets {
                                                 children: [
                                                   Text(
                                                     EquitySipController.getEquitySipListItems[i].companyname,
-                                                    style: Utils.fonts(size: 13.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
+                                                    style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
                                                   ),
                                                   SizedBox(
                                                     height: 5.0,
@@ -6465,7 +6816,7 @@ class HomeWidgets {
                                                   ),
                                                   Text(
                                                     "1000",
-                                                    style: Utils.fonts(size: 12.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
+                                                    style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w500),
                                                   )
                                                 ],
                                               ),
@@ -6481,7 +6832,7 @@ class HomeWidgets {
                                                   ),
                                                   Text(
                                                     "15 May",
-                                                    style: Utils.fonts(size: 12.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
+                                                    style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w500),
                                                   )
                                                 ],
                                               )
@@ -6518,18 +6869,25 @@ class HomeWidgets {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    child: Row(
-                      children: [
-                        Text(
-                          "Trending Stocks",
-                          style: Utils.fonts(size: 17.0, color: Utils.blackColor),
-                        ),
-                        SizedBox(
-                          width: 10,
-                        ),
-                        SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
-                      ],
+                  InkWell(
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => TrendingStocksPage()));
+                    },
+                    child: Container(
+                      child: Row(
+                        children: [
+                          Text(
+                            "Trending Stocks",
+                            style: Utils.fonts(
+                              size: 17.0,
+                            ),
+                          ),
+                          SizedBox(
+                            width: 10,
+                          ),
+                          SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
+                        ],
+                      ),
                     ),
                   ),
                   InkWell(
@@ -6542,63 +6900,109 @@ class HomeWidgets {
               SizedBox(
                 height: 10,
               ),
-              for (var j = 0; j < 3; j++)
-                Column(
-                  children: [
-                    SizedBox(
-                      height: 10,
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            /* Displaying the Script name */
-                            Text(
-                              "ONGC",
-                              style: Utils.fonts(color: Utils.blackColor, size: 14.0, fontWeight: FontWeight.w600),
-                            ),
-                            Spacer(),
-                            SvgPicture.asset(
-                              "assets/appImages/green_small_chart_shadow.svg",
-                            ),
-                            Spacer(),
-                            Observer(
-                              builder: (_) => Column(
-                                children: [
-                                  Text(
-                                    "111.85",
-                                    style: Utils.fonts(color: Utils.blackColor, size: 14.0, fontWeight: FontWeight.w600),
-                                  ),
-                                  Row(
+              Obx(() {
+                return MostActiveVolumeController.getMostActiveVolumeListItems.length > 0
+                    ? ListView.builder(
+                        shrinkWrap: true,
+                        physics: NeverScrollableScrollPhysics(),
+                        itemCount: 4,
+                        itemBuilder: (BuildContext context, int index) {
+                          return Column(
+                            children: [
+                              InkWell(
+                                onTap: () {
+                                  Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) => ScriptInfo(
+                                              CommonFunction.getScripDataModel(
+                                                  exch: int.parse(MostActiveVolumeController.getMostActiveVolumeListItems[index].scCode) >= 500000 ? "B" : "N",
+                                                  exchCode: int.parse(MostActiveVolumeController.getMostActiveVolumeListItems[index].scCode.toString())),
+                                              false)));
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                  child: Row(
                                     children: [
-                                      Icon(
-                                        Icons.arrow_drop_up_rounded,
-                                        color: Utils.lightGreenColor,
+                                      Expanded(
+                                        child: Text(
+                                          MostActiveVolumeController.getMostActiveVolumeListItems[index].symbol.toString(),
+                                          style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                        ),
                                       ),
-                                      Text(
-                                        "2.43%",
-                                        style: Utils.fonts(color: Utils.lightGreenColor, size: 12.0, fontWeight: FontWeight.w600),
-                                      ),
+                                      Observer(
+                                          builder: (context) => CommonFunction.getScripDataModel(
+                                                          exchCode: int.parse(MostActiveVolumeController.getMostActiveVolumeListItems[index].scCode),
+                                                          exch: int.parse(MostActiveVolumeController.getMostActiveVolumeListItems[index].scCode) > 500000 ? "B" : "N")
+                                                      .chartMinClose[15]
+                                                      .length >
+                                                  0
+                                              ? SmallSimpleLineChart(
+                                                  seriesList: CommonFunction.getScripDataModel(
+                                                          exchCode: int.parse(MostActiveVolumeController.getMostActiveVolumeListItems[index].scCode),
+                                                          exch: int.parse(MostActiveVolumeController.getMostActiveVolumeListItems[index].scCode) > 500000 ? "B" : "N")
+                                                      .dataPoint[15],
+                                                  prevClose: MostActiveVolumeController.getMostActiveVolumeListItems[index].closePrice,
+                                                  name: MostActiveVolumeController.getMostActiveVolumeListItems[index].symbol,
+                                                )
+                                              : SizedBox.shrink()),
+                                      Expanded(
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.end,
+                                          children: [
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  MostActiveVolumeController.getMostActiveVolumeListItems[index].closePrice.toString(),
+                                                  style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                ),
+                                                Row(
+                                                  children: [
+                                                    Padding(
+                                                      padding: const EdgeInsets.all(8.0),
+                                                      child: RotatedBox(
+                                                          quarterTurns: MostActiveVolumeController.getMostActiveVolumeListItems[index].perchg > 0 ? 4 : 2,
+                                                          child: SvgPicture.asset("assets/appImages/inverted_rectangle.svg",
+                                                              color: MostActiveVolumeController.getMostActiveVolumeListItems[index].perchg > 0 ? Utils.lightGreenColor : Utils.lightRedColor)),
+                                                    ),
+                                                    Text(
+                                                      "${MostActiveVolumeController.getMostActiveVolumeListItems[index].perchg.toStringAsFixed(2)} %",
+                                                      style: Utils.fonts(
+                                                          size: 14.0,
+                                                          color: MostActiveVolumeController.getMostActiveVolumeListItems[index].perchg > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                          fontWeight: FontWeight.w500),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      )
                                     ],
                                   ),
-                                ],
+                                ),
                               ),
+                              Divider(
+                                thickness: 2,
+                              )
+                            ],
+                          );
+                        },
+                      )
+                    : Center(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              "No Data Available",
+                              style: Utils.fonts(size: 14.0, color: Utils.greyColor),
                             ),
                           ],
                         ),
-                        // /* Displaying the Script buy sell status */
-                      ],
-                    ),
-                    SizedBox(
-                      height: 10,
-                    ),
-                    const Divider(
-                      thickness: 1.5,
-                    )
-                  ],
-                ),
+                      );
+              })
             ],
           ),
         ),
@@ -6624,7 +7028,9 @@ class HomeWidgets {
                   children: [
                     Text(
                       "Other Assets",
-                      style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+                      style: Utils.fonts(
+                        size: 17.0,
+                      ),
                     ),
                     SizedBox(
                       width: 10,
@@ -6765,377 +7171,458 @@ class HomeWidgets {
                             scrollDirection: Axis.horizontal,
                             child: Row(
                               children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 16.0),
-                                  child: Container(
-                                    width: 190,
-                                    decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(10.0),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    Dataconstants.otherAssets[0].name.toString(),
-                                                    style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
-                                                  ),
-                                                  SizedBox(
-                                                    height: 5,
-                                                  ),
-                                                  Text(
-                                                    Dataconstants.otherAssets[0].expiryDateString,
-                                                    style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
-                                                  ),
-                                                ],
-                                              ),
-                                              Spacer(),
-                                              Observer(builder: (context) {
-                                                return Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                InkWell(
+                                  onTap: () {
+                                    Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (context) => ScriptInfo(
+                                                CommonFunction.getScripDataModel(
+                                                  exch: "M",
+                                                  exchCode: Dataconstants.otherAssets[0].exchCode,
+                                                ),
+                                                false)));
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 16.0),
+                                    child: Container(
+                                      width: 190,
+                                      decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(10.0),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
                                                     Text(
-                                                      "${Dataconstants.otherAssets[0].close.toStringAsFixed(2)}",
-                                                      style: Utils.fonts(
-                                                          size: 12.0, color: Dataconstants.otherAssets[0].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor, fontWeight: FontWeight.w600),
+                                                      Dataconstants.otherAssets[0].name.toString(),
+                                                      style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
                                                     ),
-                                                    Row(
-                                                      children: [
-                                                        Icon(
-                                                          Dataconstants.otherAssets[0].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
-                                                          color: Dataconstants.otherAssets[0].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
-                                                        ),
-                                                        Text(
-                                                          "${Dataconstants.otherAssets[0].percentChange.toStringAsFixed(2)}%",
-                                                          style: Utils.fonts(
-                                                              size: 12.0,
-                                                              color: Dataconstants.otherAssets[0].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
-                                                              fontWeight: FontWeight.w600),
-                                                        ),
-                                                      ],
+                                                    SizedBox(
+                                                      height: 5,
+                                                    ),
+                                                    Text(
+                                                      Dataconstants.otherAssets[0].expiryDateString,
+                                                      style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
                                                     ),
                                                   ],
-                                                );
-                                              })
-                                            ],
-                                          ),
-                                          SizedBox(
-                                            height: 10,
-                                          ),
-                                          Observer(
-                                              builder: (context) => Dataconstants.otherAssets[0].dataPoint[15].length > 0
-                                                  ? SmallSimpleLineChart(
-                                                      seriesList: Dataconstants.otherAssets[0].dataPoint[15],
-                                                      prevClose: Dataconstants.otherAssets[0].prevDayClose,
-                                                      name: Dataconstants.otherAssets[0].name,
-                                                    )
-                                                  : SizedBox.shrink())
-                                        ],
+                                                ),
+                                                Spacer(),
+                                                Observer(builder: (context) {
+                                                  return Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                                    children: [
+                                                      Text(
+                                                        Dataconstants.otherAssets[0].close == 0.0
+                                                            ? Dataconstants.otherAssets[0].prevDayClose.toStringAsFixed(2)
+                                                            : "${Dataconstants.otherAssets[0].close.toStringAsFixed(2)}",
+                                                        style: Utils.fonts(
+                                                            size: 12.0,
+                                                            color: Dataconstants.otherAssets[0].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                            fontWeight: FontWeight.w600),
+                                                      ),
+                                                      Row(
+                                                        children: [
+                                                          Icon(
+                                                            Dataconstants.otherAssets[0].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
+                                                            color: Dataconstants.otherAssets[0].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                          ),
+                                                          Text(
+                                                            "${Dataconstants.otherAssets[0].percentChange.toStringAsFixed(2)}%",
+                                                            style: Utils.fonts(
+                                                                size: 12.0,
+                                                                color: Dataconstants.otherAssets[0].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                                fontWeight: FontWeight.w600),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  );
+                                                })
+                                              ],
+                                            ),
+                                            SizedBox(
+                                              height: 10,
+                                            ),
+                                            Observer(
+                                                builder: (context) => Dataconstants.otherAssets[0].dataPoint[15].length > 0
+                                                    ? SmallSimpleLineChart(
+                                                        seriesList: Dataconstants.otherAssets[0].dataPoint[15],
+                                                        prevClose: Dataconstants.otherAssets[0].prevDayClose,
+                                                        name: Dataconstants.otherAssets[0].name,
+                                                      )
+                                                    : SizedBox.shrink())
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 16.0),
-                                  child: Container(
-                                    width: 190,
-                                    decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(10.0),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    Dataconstants.otherAssets[1].name.toString(),
-                                                    style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
-                                                  ),
-                                                  SizedBox(
-                                                    height: 5,
-                                                  ),
-                                                  Text(
-                                                    Dataconstants.otherAssets[1].expiryDateString,
-                                                    style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
-                                                  ),
-                                                ],
-                                              ),
-                                              Spacer(),
-                                              Observer(builder: (_) {
-                                                return Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                InkWell(
+                                  onTap: () {
+                                    Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (context) => ScriptInfo(
+                                                CommonFunction.getScripDataModel(
+                                                  exch: "M",
+                                                  exchCode: Dataconstants.otherAssets[1].exchCode,
+                                                ),
+                                                false)));
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 16.0),
+                                    child: Container(
+                                      width: 190,
+                                      decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(10.0),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
                                                     Text(
-                                                      "${Dataconstants.otherAssets[1].close.toStringAsFixed(2)}",
-                                                      style: Utils.fonts(
-                                                          size: 12.0, color: Dataconstants.otherAssets[1].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor, fontWeight: FontWeight.w600),
+                                                      Dataconstants.otherAssets[1].name.toString(),
+                                                      style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
                                                     ),
-                                                    Row(
-                                                      children: [
-                                                        Icon(
-                                                          Dataconstants.otherAssets[1].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
-                                                          color: Dataconstants.otherAssets[1].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
-                                                        ),
-                                                        Text(
-                                                          "${Dataconstants.otherAssets[1].percentChange.toStringAsFixed(2)}%",
-                                                          style: Utils.fonts(
-                                                              size: 12.0,
-                                                              color: Dataconstants.otherAssets[1].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
-                                                              fontWeight: FontWeight.w600),
-                                                        ),
-                                                      ],
+                                                    SizedBox(
+                                                      height: 5,
+                                                    ),
+                                                    Text(
+                                                      Dataconstants.otherAssets[1].expiryDateString,
+                                                      style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
                                                     ),
                                                   ],
-                                                );
-                                              })
-                                            ],
-                                          ),
-                                          SizedBox(
-                                            height: 10,
-                                          ),
-                                          Observer(
-                                              builder: (context) => Dataconstants.otherAssets[1].dataPoint[15].length > 0
-                                                  ? SmallSimpleLineChart(
-                                                      seriesList: Dataconstants.otherAssets[1].dataPoint[15],
-                                                      prevClose: Dataconstants.otherAssets[1].prevDayClose,
-                                                      name: Dataconstants.otherAssets[1].name,
-                                                    )
-                                                  : SizedBox.shrink())
-                                        ],
+                                                ),
+                                                Spacer(),
+                                                Observer(builder: (_) {
+                                                  return Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                                    children: [
+                                                      Text(
+                                                        Dataconstants.otherAssets[1].close == 0.0
+                                                            ? Dataconstants.otherAssets[1].prevDayClose.toStringAsFixed(2)
+                                                            : "${Dataconstants.otherAssets[1].close.toStringAsFixed(2)}",
+                                                        style: Utils.fonts(
+                                                            size: 12.0,
+                                                            color: Dataconstants.otherAssets[1].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                            fontWeight: FontWeight.w600),
+                                                      ),
+                                                      Row(
+                                                        children: [
+                                                          Icon(
+                                                            Dataconstants.otherAssets[1].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
+                                                            color: Dataconstants.otherAssets[1].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                          ),
+                                                          Text(
+                                                            "${Dataconstants.otherAssets[1].percentChange.toStringAsFixed(2)}%",
+                                                            style: Utils.fonts(
+                                                                size: 12.0,
+                                                                color: Dataconstants.otherAssets[1].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                                fontWeight: FontWeight.w600),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  );
+                                                })
+                                              ],
+                                            ),
+                                            SizedBox(
+                                              height: 10,
+                                            ),
+                                            Observer(
+                                                builder: (context) => Dataconstants.otherAssets[1].dataPoint[15].length > 0
+                                                    ? SmallSimpleLineChart(
+                                                        seriesList: Dataconstants.otherAssets[1].dataPoint[15],
+                                                        prevClose: Dataconstants.otherAssets[1].prevDayClose,
+                                                        name: Dataconstants.otherAssets[1].name,
+                                                      )
+                                                    : SizedBox.shrink())
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 16.0),
-                                  child: Container(
-                                    width: 190,
-                                    decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(10.0),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    Dataconstants.otherAssets[2].name,
-                                                    style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
-                                                  ),
-                                                  SizedBox(
-                                                    height: 5,
-                                                  ),
-                                                  Text(
-                                                    Dataconstants.otherAssets[2].expiryDateString,
-                                                    style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
-                                                  ),
-                                                ],
-                                              ),
-                                              Spacer(),
-                                              Observer(builder: (_) {
-                                                return Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                InkWell(
+                                  onTap: () {
+                                    Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (context) => ScriptInfo(
+                                                CommonFunction.getScripDataModel(
+                                                  exch: "M",
+                                                  exchCode: Dataconstants.otherAssets[2].exchCode,
+                                                ),
+                                                false)));
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 16.0),
+                                    child: Container(
+                                      width: 190,
+                                      decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(10.0),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
                                                     Text(
-                                                      "${Dataconstants.otherAssets[2].close.toStringAsFixed(2)}",
-                                                      style: Utils.fonts(
-                                                          size: 12.0, color: Dataconstants.otherAssets[2].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor, fontWeight: FontWeight.w600),
+                                                      Dataconstants.otherAssets[2].name,
+                                                      style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
                                                     ),
-                                                    Row(
-                                                      children: [
-                                                        Icon(
-                                                          Dataconstants.otherAssets[2].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
-                                                          color: Dataconstants.otherAssets[2].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
-                                                        ),
-                                                        Text(
-                                                          "${Dataconstants.otherAssets[2].percentChange.toStringAsFixed(2)}%",
-                                                          style: Utils.fonts(
-                                                              size: 12.0,
-                                                              color: Dataconstants.otherAssets[2].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
-                                                              fontWeight: FontWeight.w600),
-                                                        ),
-                                                      ],
+                                                    SizedBox(
+                                                      height: 5,
+                                                    ),
+                                                    Text(
+                                                      Dataconstants.otherAssets[2].expiryDateString,
+                                                      style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
                                                     ),
                                                   ],
-                                                );
-                                              })
-                                            ],
-                                          ),
-                                          SizedBox(
-                                            height: 10,
-                                          ),
-                                          Observer(
-                                              builder: (context) => Dataconstants.otherAssets[2].dataPoint[15].length > 0
-                                                  ? SmallSimpleLineChart(
-                                                      seriesList: Dataconstants.otherAssets[2].dataPoint[15],
-                                                      prevClose: Dataconstants.otherAssets[2].prevDayClose,
-                                                      name: Dataconstants.otherAssets[2].name,
-                                                    )
-                                                  : SizedBox.shrink())
-                                        ],
+                                                ),
+                                                Spacer(),
+                                                Observer(builder: (_) {
+                                                  return Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                                    children: [
+                                                      Text(
+                                                        Dataconstants.otherAssets[2].close == 0.0
+                                                            ? Dataconstants.otherAssets[2].prevDayClose.toStringAsFixed(2)
+                                                            : "${Dataconstants.otherAssets[2].close.toStringAsFixed(2)}",
+                                                        style: Utils.fonts(
+                                                            size: 12.0,
+                                                            color: Dataconstants.otherAssets[2].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                            fontWeight: FontWeight.w600),
+                                                      ),
+                                                      Row(
+                                                        children: [
+                                                          Icon(
+                                                            Dataconstants.otherAssets[2].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
+                                                            color: Dataconstants.otherAssets[2].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                          ),
+                                                          Text(
+                                                            "${Dataconstants.otherAssets[2].percentChange.toStringAsFixed(2)}%",
+                                                            style: Utils.fonts(
+                                                                size: 12.0,
+                                                                color: Dataconstants.otherAssets[2].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                                fontWeight: FontWeight.w600),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  );
+                                                })
+                                              ],
+                                            ),
+                                            SizedBox(
+                                              height: 10,
+                                            ),
+                                            Observer(
+                                                builder: (context) => Dataconstants.otherAssets[2].dataPoint[15].length > 0
+                                                    ? SmallSimpleLineChart(
+                                                        seriesList: Dataconstants.otherAssets[2].dataPoint[15],
+                                                        prevClose: Dataconstants.otherAssets[2].prevDayClose,
+                                                        name: Dataconstants.otherAssets[2].name,
+                                                      )
+                                                    : SizedBox.shrink())
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 16.0),
-                                  child: Container(
-                                    width: 190,
-                                    decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(10.0),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    Dataconstants.otherAssets[3].name,
-                                                    style: Utils.fonts(size: 10.0, fontWeight: FontWeight.w600),
-                                                  ),
-                                                  SizedBox(
-                                                    height: 5,
-                                                  ),
-                                                  Text(
-                                                    Dataconstants.otherAssets[3].expiryDateString,
-                                                    style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
-                                                  ),
-                                                ],
-                                              ),
-                                              Spacer(),
-                                              Observer(builder: (_) {
-                                                return Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                InkWell(
+                                  onTap: () {
+                                    Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (context) => ScriptInfo(
+                                                CommonFunction.getScripDataModel(
+                                                  exch: "M",
+                                                  exchCode: Dataconstants.otherAssets[3].exchCode,
+                                                ),
+                                                false)));
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 16.0),
+                                    child: Container(
+                                      width: 190,
+                                      decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(10.0),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
                                                     Text(
-                                                      "${Dataconstants.otherAssets[3].close.toStringAsFixed(2)}",
-                                                      style: Utils.fonts(
-                                                          size: 12.0, color: Dataconstants.otherAssets[3].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor, fontWeight: FontWeight.w600),
+                                                      Dataconstants.otherAssets[3].name,
+                                                      style: Utils.fonts(size: 10.0, fontWeight: FontWeight.w600),
                                                     ),
-                                                    Row(
-                                                      children: [
-                                                        Icon(
-                                                          Dataconstants.otherAssets[3].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
-                                                          color: Dataconstants.otherAssets[3].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
-                                                        ),
-                                                        Text(
-                                                          "${Dataconstants.otherAssets[3].percentChange.toStringAsFixed(2)}%",
-                                                          style: Utils.fonts(
-                                                              size: 12.0,
-                                                              color: Dataconstants.otherAssets[3].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
-                                                              fontWeight: FontWeight.w600),
-                                                        ),
-                                                      ],
+                                                    SizedBox(
+                                                      height: 5,
+                                                    ),
+                                                    Text(
+                                                      Dataconstants.otherAssets[3].expiryDateString,
+                                                      style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
                                                     ),
                                                   ],
-                                                );
-                                              })
-                                            ],
-                                          ),
-                                          SizedBox(
-                                            height: 10,
-                                          ),
-                                          Observer(
-                                              builder: (context) => Dataconstants.otherAssets[3].dataPoint[15].length > 0
-                                                  ? SmallSimpleLineChart(
-                                                      seriesList: Dataconstants.otherAssets[3].dataPoint[15],
-                                                      prevClose: Dataconstants.otherAssets[3].prevDayClose,
-                                                      name: Dataconstants.otherAssets[3].name,
-                                                    )
-                                                  : SizedBox.shrink())
-                                        ],
+                                                ),
+                                                Spacer(),
+                                                Observer(builder: (_) {
+                                                  return Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                                    children: [
+                                                      Text(
+                                                        "${Dataconstants.otherAssets[3].close.toStringAsFixed(2)}",
+                                                        style: Utils.fonts(
+                                                            size: 12.0,
+                                                            color: Dataconstants.otherAssets[3].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                            fontWeight: FontWeight.w600),
+                                                      ),
+                                                      Row(
+                                                        children: [
+                                                          Icon(
+                                                            Dataconstants.otherAssets[3].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
+                                                            color: Dataconstants.otherAssets[3].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                          ),
+                                                          Text(
+                                                            "${Dataconstants.otherAssets[3].percentChange.toStringAsFixed(2)}%",
+                                                            style: Utils.fonts(
+                                                                size: 12.0,
+                                                                color: Dataconstants.otherAssets[3].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                                fontWeight: FontWeight.w600),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  );
+                                                })
+                                              ],
+                                            ),
+                                            SizedBox(
+                                              height: 10,
+                                            ),
+                                            Observer(
+                                                builder: (context) => Dataconstants.otherAssets[3].dataPoint[15].length > 0
+                                                    ? SmallSimpleLineChart(
+                                                        seriesList: Dataconstants.otherAssets[3].dataPoint[15],
+                                                        prevClose: Dataconstants.otherAssets[3].prevDayClose,
+                                                        name: Dataconstants.otherAssets[3].name,
+                                                      )
+                                                    : SizedBox.shrink())
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 16.0),
-                                  child: Container(
-                                    width: 190,
-                                    decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(10.0),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    Dataconstants.otherAssets[4].name,
-                                                    style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
-                                                  ),
-                                                  SizedBox(
-                                                    height: 5,
-                                                  ),
-                                                  Text(
-                                                    Dataconstants.otherAssets[4].expiryDateString,
-                                                    style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
-                                                  ),
-                                                ],
-                                              ),
-                                              Spacer(),
-                                              Observer(builder: (_) {
-                                                return Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                InkWell(
+                                  onTap: () {
+                                    Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (context) => ScriptInfo(
+                                                CommonFunction.getScripDataModel(
+                                                  exch: "M",
+                                                  exchCode: Dataconstants.otherAssets[4].exchCode,
+                                                ),
+                                                false)));
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 16.0),
+                                    child: Container(
+                                      width: 190,
+                                      decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(10.0),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
                                                     Text(
-                                                      "${Dataconstants.otherAssets[4].close.toStringAsFixed(2)}",
-                                                      style: Utils.fonts(
-                                                          size: 12.0, color: Dataconstants.otherAssets[4].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor, fontWeight: FontWeight.w600),
+                                                      Dataconstants.otherAssets[4].name,
+                                                      style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
                                                     ),
-                                                    Row(
-                                                      children: [
-                                                        Icon(
-                                                          Dataconstants.otherAssets[4].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
-                                                          color: Dataconstants.otherAssets[4].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
-                                                        ),
-                                                        Text(
-                                                          "${Dataconstants.otherAssets[4].percentChange.toStringAsFixed(2)}%",
-                                                          style: Utils.fonts(
-                                                              size: 12.0,
-                                                              color: Dataconstants.otherAssets[4].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
-                                                              fontWeight: FontWeight.w600),
-                                                        ),
-                                                      ],
+                                                    SizedBox(
+                                                      height: 5,
+                                                    ),
+                                                    Text(
+                                                      Dataconstants.otherAssets[4].expiryDateString,
+                                                      style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
                                                     ),
                                                   ],
-                                                );
-                                              })
-                                            ],
-                                          ),
-                                          SizedBox(
-                                            height: 10,
-                                          ),
-                                          Observer(
-                                              builder: (context) => Dataconstants.otherAssets[4].dataPoint[15].length > 0
-                                                  ? SmallSimpleLineChart(
-                                                      seriesList: Dataconstants.otherAssets[4].dataPoint[15],
-                                                      prevClose: Dataconstants.otherAssets[4].prevDayClose,
-                                                      name: Dataconstants.otherAssets[4].name,
-                                                    )
-                                                  : SizedBox.shrink())
-                                        ],
+                                                ),
+                                                Spacer(),
+                                                Observer(builder: (_) {
+                                                  return Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                                    children: [
+                                                      Text(
+                                                        "${Dataconstants.otherAssets[4].close.toStringAsFixed(2)}",
+                                                        style: Utils.fonts(
+                                                            size: 12.0,
+                                                            color: Dataconstants.otherAssets[4].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                            fontWeight: FontWeight.w600),
+                                                      ),
+                                                      Row(
+                                                        children: [
+                                                          Icon(
+                                                            Dataconstants.otherAssets[4].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
+                                                            color: Dataconstants.otherAssets[4].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                          ),
+                                                          Text(
+                                                            "${Dataconstants.otherAssets[4].percentChange.toStringAsFixed(2)}%",
+                                                            style: Utils.fonts(
+                                                                size: 12.0,
+                                                                color: Dataconstants.otherAssets[4].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                                fontWeight: FontWeight.w600),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  );
+                                                })
+                                              ],
+                                            ),
+                                            SizedBox(
+                                              height: 10,
+                                            ),
+                                            Observer(
+                                                builder: (context) => Dataconstants.otherAssets[4].dataPoint[15].length > 0
+                                                    ? SmallSimpleLineChart(
+                                                        seriesList: Dataconstants.otherAssets[4].dataPoint[15],
+                                                        prevClose: Dataconstants.otherAssets[4].prevDayClose,
+                                                        name: Dataconstants.otherAssets[4].name,
+                                                      )
+                                                    : SizedBox.shrink())
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -7148,233 +7635,272 @@ class HomeWidgets {
                                 scrollDirection: Axis.horizontal,
                                 child: Row(
                                   children: [
-                                    Padding(
-                                      padding: const EdgeInsets.only(right: 16.0),
-                                      child: Container(
-                                        width: 190,
-                                        decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(10.0),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        Dataconstants.otherAssets[5].name,
-                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
-                                                      ),
-                                                      SizedBox(
-                                                        height: 5,
-                                                      ),
-                                                      Text(
-                                                        Dataconstants.otherAssets[5].expiryDateString,
-                                                        style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  Spacer(),
-                                                  Observer(builder: (_) {
-                                                    return Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                    InkWell(
+                                      onTap: () {
+                                        Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                                builder: (context) => ScriptInfo(
+                                                    CommonFunction.getScripDataModel(
+                                                      exch: "C",
+                                                      exchCode: Dataconstants.otherAssets[5].exchCode,
+                                                    ),
+                                                    false)));
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(right: 16.0),
+                                        child: Container(
+                                          width: 190,
+                                          decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(10.0),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
                                                       children: [
                                                         Text(
-                                                          "${Dataconstants.otherAssets[5].close.toStringAsFixed(2)}",
-                                                          style: Utils.fonts(
-                                                              size: 12.0,
-                                                              color: Dataconstants.otherAssets[5].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
-                                                              fontWeight: FontWeight.w600),
+                                                          Dataconstants.otherAssets[5].name,
+                                                          style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
                                                         ),
-                                                        Row(
-                                                          children: [
-                                                            Icon(
-                                                              Dataconstants.otherAssets[5].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
-                                                              color: Dataconstants.otherAssets[5].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
-                                                            ),
-                                                            Text(
-                                                              "${Dataconstants.otherAssets[5].percentChange.toStringAsFixed(2)}%",
-                                                              style: Utils.fonts(
-                                                                  size: 12.0,
-                                                                  color: Dataconstants.otherAssets[5].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
-                                                                  fontWeight: FontWeight.w600),
-                                                            ),
-                                                          ],
+                                                        SizedBox(
+                                                          height: 5,
+                                                        ),
+                                                        Text(
+                                                          Dataconstants.otherAssets[5].expiryDateString,
+                                                          style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
                                                         ),
                                                       ],
-                                                    );
-                                                  })
-                                                ],
-                                              ),
-                                              SizedBox(
-                                                height: 10,
-                                              ),
-                                              Observer(
-                                                  builder: (context) => Dataconstants.otherAssets[5].dataPoint[15].length > 0
-                                                      ? SmallSimpleLineChart(
-                                                          seriesList: Dataconstants.otherAssets[5].dataPoint[15],
-                                                          prevClose: Dataconstants.otherAssets[5].prevDayClose,
-                                                          name: Dataconstants.otherAssets[5].name,
-                                                        )
-                                                      : SizedBox.shrink())
-                                            ],
+                                                    ),
+                                                    Spacer(),
+                                                    Observer(builder: (_) {
+                                                      return Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                                        children: [
+                                                          Text(
+                                                            "${Dataconstants.otherAssets[5].close.toStringAsFixed(2)}",
+                                                            style: Utils.fonts(
+                                                                size: 12.0,
+                                                                color: Dataconstants.otherAssets[5].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                                fontWeight: FontWeight.w600),
+                                                          ),
+                                                          Row(
+                                                            children: [
+                                                              Icon(
+                                                                Dataconstants.otherAssets[5].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
+                                                                color: Dataconstants.otherAssets[5].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                              ),
+                                                              Text(
+                                                                "${Dataconstants.otherAssets[5].percentChange.toStringAsFixed(2)}%",
+                                                                style: Utils.fonts(
+                                                                    size: 12.0,
+                                                                    color: Dataconstants.otherAssets[5].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                                    fontWeight: FontWeight.w600),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ],
+                                                      );
+                                                    })
+                                                  ],
+                                                ),
+                                                SizedBox(
+                                                  height: 10,
+                                                ),
+                                                Observer(
+                                                    builder: (context) => Dataconstants.otherAssets[5].dataPoint[15].length > 0
+                                                        ? SmallSimpleLineChart(
+                                                            seriesList: Dataconstants.otherAssets[5].dataPoint[15],
+                                                            prevClose: Dataconstants.otherAssets[5].prevDayClose,
+                                                            name: Dataconstants.otherAssets[5].name,
+                                                          )
+                                                        : SizedBox.shrink())
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                    Padding(
-                                      padding: const EdgeInsets.only(right: 16.0),
-                                      child: Container(
-                                        width: 190,
-                                        decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(10.0),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        Dataconstants.otherAssets[6].name,
-                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
-                                                      ),
-                                                      SizedBox(
-                                                        height: 5,
-                                                      ),
-                                                      Text(
-                                                        Dataconstants.otherAssets[6].expiryDateString,
-                                                        style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  Spacer(),
-                                                  Observer(builder: (_) {
-                                                    return Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                    InkWell(
+                                      onTap: () {
+                                        Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                                builder: (context) => ScriptInfo(
+                                                    CommonFunction.getScripDataModel(
+                                                      exch: "C",
+                                                      exchCode: Dataconstants.otherAssets[6].exchCode,
+                                                    ),
+                                                    false)));
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(right: 16.0),
+                                        child: Container(
+                                          width: 190,
+                                          decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(10.0),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
                                                       children: [
                                                         Text(
-                                                          "${Dataconstants.otherAssets[6].close.toStringAsFixed(2)}",
-                                                          style: Utils.fonts(
-                                                              size: 12.0,
-                                                              color: Dataconstants.otherAssets[6].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
-                                                              fontWeight: FontWeight.w600),
+                                                          Dataconstants.otherAssets[6].name,
+                                                          style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
                                                         ),
-                                                        Row(
-                                                          children: [
-                                                            Icon(
-                                                              Dataconstants.otherAssets[6].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
-                                                              color: Dataconstants.otherAssets[6].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
-                                                            ),
-                                                            Text(
-                                                              "${Dataconstants.otherAssets[6].percentChange.toStringAsFixed(2)}%",
-                                                              style: Utils.fonts(
-                                                                  size: 12.0,
-                                                                  color: Dataconstants.otherAssets[6].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
-                                                                  fontWeight: FontWeight.w600),
-                                                            ),
-                                                          ],
+                                                        SizedBox(
+                                                          height: 5,
+                                                        ),
+                                                        Text(
+                                                          Dataconstants.otherAssets[6].expiryDateString,
+                                                          style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
                                                         ),
                                                       ],
-                                                    );
-                                                  })
-                                                ],
-                                              ),
-                                              SizedBox(
-                                                height: 10,
-                                              ),
-                                              Observer(
-                                                  builder: (context) => Dataconstants.otherAssets[6].dataPoint[15].length > 0
-                                                      ? SmallSimpleLineChart(
-                                                          seriesList: Dataconstants.otherAssets[6].dataPoint[15],
-                                                          prevClose: Dataconstants.otherAssets[6].prevDayClose,
-                                                          name: Dataconstants.otherAssets[6].name,
-                                                        )
-                                                      : SizedBox.shrink())
-                                            ],
+                                                    ),
+                                                    Spacer(),
+                                                    Observer(builder: (_) {
+                                                      return Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                                        children: [
+                                                          Text(
+                                                            "${Dataconstants.otherAssets[6].close.toStringAsFixed(2)}",
+                                                            style: Utils.fonts(
+                                                                size: 12.0,
+                                                                color: Dataconstants.otherAssets[6].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                                fontWeight: FontWeight.w600),
+                                                          ),
+                                                          Row(
+                                                            children: [
+                                                              Icon(
+                                                                Dataconstants.otherAssets[6].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
+                                                                color: Dataconstants.otherAssets[6].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                              ),
+                                                              Text(
+                                                                "${Dataconstants.otherAssets[6].percentChange.toStringAsFixed(2)}%",
+                                                                style: Utils.fonts(
+                                                                    size: 12.0,
+                                                                    color: Dataconstants.otherAssets[6].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                                    fontWeight: FontWeight.w600),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ],
+                                                      );
+                                                    })
+                                                  ],
+                                                ),
+                                                SizedBox(
+                                                  height: 10,
+                                                ),
+                                                Observer(
+                                                    builder: (context) => Dataconstants.otherAssets[6].dataPoint[15].length > 0
+                                                        ? SmallSimpleLineChart(
+                                                            seriesList: Dataconstants.otherAssets[6].dataPoint[15],
+                                                            prevClose: Dataconstants.otherAssets[6].prevDayClose,
+                                                            name: Dataconstants.otherAssets[6].name,
+                                                          )
+                                                        : SizedBox.shrink())
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                    Padding(
-                                      padding: const EdgeInsets.only(right: 16.0),
-                                      child: Container(
-                                        width: 190,
-                                        decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(10.0),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        Dataconstants.otherAssets[7].name,
-                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
-                                                      ),
-                                                      SizedBox(
-                                                        height: 5,
-                                                      ),
-                                                      Text(
-                                                        Dataconstants.otherAssets[7].expiryDateString,
-                                                        style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  Spacer(),
-                                                  Observer(builder: (_) {
-                                                    return Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                    InkWell(
+                                      onTap: () {
+                                        Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                                builder: (context) => ScriptInfo(
+                                                    CommonFunction.getScripDataModel(
+                                                      exch: "C",
+                                                      exchCode: Dataconstants.otherAssets[7].exchCode,
+                                                    ),
+                                                    false)));
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(right: 16.0),
+                                        child: Container(
+                                          width: 190,
+                                          decoration: BoxDecoration(border: Border.all(color: Utils.greyColor.withOpacity(0.5)), borderRadius: BorderRadius.all(Radius.circular(20.0))),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(10.0),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
                                                       children: [
                                                         Text(
-                                                          "${Dataconstants.otherAssets[7].close.toStringAsFixed(2)}",
-                                                          style: Utils.fonts(
-                                                              size: 12.0,
-                                                              color: Dataconstants.otherAssets[7].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
-                                                              fontWeight: FontWeight.w600),
+                                                          Dataconstants.otherAssets[7].name,
+                                                          style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w600),
                                                         ),
-                                                        Row(
-                                                          children: [
-                                                            Icon(
-                                                              Dataconstants.otherAssets[7].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
-                                                              color: Dataconstants.otherAssets[7].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
-                                                            ),
-                                                            Text(
-                                                              "${Dataconstants.otherAssets[7].percentChange.toStringAsFixed(2)}%",
-                                                              style: Utils.fonts(
-                                                                  size: 12.0,
-                                                                  color: Dataconstants.otherAssets[7].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
-                                                                  fontWeight: FontWeight.w600),
-                                                            ),
-                                                          ],
+                                                        SizedBox(
+                                                          height: 5,
+                                                        ),
+                                                        Text(
+                                                          Dataconstants.otherAssets[7].expiryDateString,
+                                                          style: Utils.fonts(size: 11.0, color: Utils.greyColor, fontWeight: FontWeight.w600),
                                                         ),
                                                       ],
-                                                    );
-                                                  })
-                                                ],
-                                              ),
-                                              SizedBox(
-                                                height: 10,
-                                              ),
-                                              Observer(
-                                                  builder: (context) => Dataconstants.otherAssets[7].dataPoint[15].length > 0
-                                                      ? SmallSimpleLineChart(
-                                                          seriesList: Dataconstants.otherAssets[7].dataPoint[15],
-                                                          prevClose: Dataconstants.otherAssets[7].prevDayClose,
-                                                          name: Dataconstants.otherAssets[7].name,
-                                                        )
-                                                      : SizedBox.shrink())
-                                            ],
+                                                    ),
+                                                    Spacer(),
+                                                    Observer(builder: (_) {
+                                                      return Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                                        children: [
+                                                          Text(
+                                                            "${Dataconstants.otherAssets[7].close.toStringAsFixed(2)}",
+                                                            style: Utils.fonts(
+                                                                size: 12.0,
+                                                                color: Dataconstants.otherAssets[7].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                                fontWeight: FontWeight.w600),
+                                                          ),
+                                                          Row(
+                                                            children: [
+                                                              Icon(
+                                                                Dataconstants.otherAssets[7].percentChange > 0 ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded,
+                                                                color: Dataconstants.otherAssets[7].percentChange > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                              ),
+                                                              Text(
+                                                                "${Dataconstants.otherAssets[7].percentChange.toStringAsFixed(2)}%",
+                                                                style: Utils.fonts(
+                                                                    size: 12.0,
+                                                                    color: Dataconstants.otherAssets[7].percentChange > 0 ? Utils.darkGreenColor : Utils.lightRedColor,
+                                                                    fontWeight: FontWeight.w600),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ],
+                                                      );
+                                                    })
+                                                  ],
+                                                ),
+                                                SizedBox(
+                                                  height: 10,
+                                                ),
+                                                Observer(
+                                                    builder: (context) => Dataconstants.otherAssets[7].dataPoint[15].length > 0
+                                                        ? SmallSimpleLineChart(
+                                                            seriesList: Dataconstants.otherAssets[7].dataPoint[15],
+                                                            prevClose: Dataconstants.otherAssets[7].prevDayClose,
+                                                            name: Dataconstants.otherAssets[7].name,
+                                                          )
+                                                        : SizedBox.shrink())
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -7478,240 +8004,241 @@ class HomeWidgets {
   static Widget research(BuildContext context) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Text(
-                    "Research",
-                    style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+        Observer(builder: (BuildContext context) {
+          return Dataconstants.researchCallsModel.fetchingData
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            "Research",
+                            style: Utils.fonts(
+                              size: 17.0,
+                            ),
+                          ),
+                          SizedBox(
+                            width: 10,
+                          ),
+                          SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
+                          Spacer(),
+                          Container(
+                            decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5)), color: Utils.lightyellowColor.withOpacity(0.5)),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
+                              child: Text(
+                                "0 Calls",
+                                style: Utils.fonts(size: 12.0, color: Utils.darkyellowColor),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(
+                        height: 10,
+                      ),
+                      CircularProgressIndicator(
+                        color: Utils.primaryColor,
+                      ),
+                    ],
                   ),
-                  SizedBox(
-                    width: 10,
-                  ),
-                  SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
-                  Spacer(),
-                  Container(
-                    decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5)), color: Utils.lightyellowColor.withOpacity(0.5)),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-                      child: Text(
-                        "31 Calls",
-                        style: Utils.fonts(size: 12.0, color: Utils.darkyellowColor),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(
-                height: 20,
-              ),
-              Table(
-                border: TableBorder(horizontalInside: BorderSide(width: 1, color: Utils.greyColor.withOpacity(0.5), style: BorderStyle.solid)),
-                children: [
-                  TableRow(children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12.0),
-                      child: Text(
-                        'Symbol',
-                        textAlign: TextAlign.start,
-                        style: Utils.fonts(size: 14.0, color: Utils.greyColor),
-                      ),
-                    ),
-                    Text(
-                      'Target',
-                      textAlign: TextAlign.center,
-                      style: Utils.fonts(size: 14.0, color: Utils.greyColor),
-                    ),
-                    Text(
-                      'Exp.Return',
-                      textAlign: TextAlign.end,
-                      style: Utils.fonts(size: 14.0, color: Utils.greyColor),
-                    ),
-                  ]),
-                  TableRow(children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Row(
+                )
+              : Dataconstants.researchCallsModel.researchCalls.data.length == 0
+                  ? Center(child: Text("No Data available", style: Utils.fonts()))
+                  : Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
                         children: [
-                          Container(
-                            decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5)), color: ThemeConstants.buyColor),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-                              child: Text(
-                                "BUY",
-                                style: Utils.fonts(size: 12.0, color: Utils.blackColor),
-                              ),
+                          InkWell(
+                            onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => ResearchScreen()));
+                            },
+                            child: Row(
+                              children: [
+                                Text(
+                                  "Research",
+                                  style: Utils.fonts(
+                                    size: 17.0,
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 10,
+                                ),
+                                SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
+                                Spacer(),
+                                Container(
+                                  decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5)), color: Utils.lightyellowColor.withOpacity(0.5)),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
+                                    child: Text(
+                                      "${Dataconstants.researchCallsModel.researchCalls.data.length.toString()} Calls",
+                                      style: Utils.fonts(size: 12.0, color: Utils.darkyellowColor),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           SizedBox(
-                            width: 5,
+                            height: 20,
                           ),
-                          Text('RELIANCE', style: Utils.fonts(size: 14.0, color: Utils.blackColor), textAlign: TextAlign.center),
+                          Column(
+                            children: [
+                              // Dataconstants.researchCallsModel.intradayList.length > 0
+                              //     ?
+                              Column(
+                                children: [
+                                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                    Container(
+                                      width: MediaQuery.of(context).size.width / 3,
+                                      child: Text(
+                                        'Symbol',
+                                        textAlign: TextAlign.start,
+                                        style: Utils.fonts(size: 14.0, color: Utils.greyColor),
+                                      ),
+                                    ),
+                                    Container(
+                                      width: MediaQuery.of(context).size.width / 3.5,
+                                      child: Text(
+                                        'Target',
+                                        textAlign: TextAlign.center,
+                                        style: Utils.fonts(size: 14.0, color: Utils.greyColor),
+                                      ),
+                                    ),
+                                    Container(
+                                      width: MediaQuery.of(context).size.width / 3.5,
+                                      child: Text(
+                                        'Exp.Return',
+                                        textAlign: TextAlign.end,
+                                        style: Utils.fonts(size: 14.0, color: Utils.greyColor),
+                                      ),
+                                    ),
+                                  ]),
+                                  ListView.builder(
+                                      shrinkWrap: true,
+                                      itemCount: Dataconstants.researchCallsModel.researchCalls.data.length >= 4 ? 4 : Dataconstants.researchCallsModel.researchCalls.data.length,
+                                      itemBuilder: (context, index) {
+                                        return Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                          child: Column(
+                                            children: [
+                                              InkWell(
+                                                onTap: () {
+                                                  // Navigator.push(
+                                                  //     context,
+                                                  //     MaterialPageRoute(
+                                                  //         builder: (context) => ScriptInfo(CommonFunction.getScripDataModel(
+                                                  //             exch: Dataconstants.researchCallsModel.researchCalls.data[index].model.exchCode >= 500000 ? "B" : "N",
+                                                  //             exchCode: int.parse(Dataconstants.researchCallsModel.researchCalls.data[index].model.exchCode.toString())))));
+
+                                                  showModalBottomSheet(
+                                                      backgroundColor: Utils.containerColor,
+                                                      isScrollControlled: true,
+                                                      context: context,
+                                                      builder: (builder) {
+                                                        return OrderPlacementBottomSheet(
+                                                          segment: Dataconstants.researchCallsModel.researchCalls.data[index].exchsegment,
+                                                          stockName: Dataconstants.researchCallsModel.researchCalls.data[index].model.name,
+                                                          isBuy: Dataconstants.researchCallsModel.researchCalls.data[index].buysell == "Buy" ? true : false,
+                                                          currentModel: Dataconstants.researchCallsModel.researchCalls.data[index].model,
+                                                        );
+                                                      });
+                                                },
+                                                child: Padding(
+                                                  padding: const EdgeInsets.symmetric(vertical: 18.0),
+                                                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                                    Container(
+                                                      width: MediaQuery.of(context).size.width / 3,
+                                                      child: Padding(
+                                                        padding: const EdgeInsets.symmetric(vertical: 0),
+                                                        child: Row(
+                                                          children: [
+                                                            Container(
+                                                              decoration: BoxDecoration(
+                                                                  borderRadius: BorderRadius.all(Radius.circular(5)),
+                                                                  color: Dataconstants.researchCallsModel.researchCalls.data[index].buysell == "Buy"
+                                                                      ? ThemeConstants.buyColor
+                                                                      : Dataconstants.researchCallsModel.researchCalls.data[index].buysell == "Sell"
+                                                                          ? ThemeConstants.sellColor
+                                                                          : Utils.greyColor),
+                                                              child: Padding(
+                                                                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
+                                                                child: Text(
+                                                                  Dataconstants.researchCallsModel.researchCalls.data[index].buysell == "Buy"
+                                                                      ? "BUY"
+                                                                      : Dataconstants.researchCallsModel.researchCalls.data[index].buysell == "Sell"
+                                                                          ? "SELL"
+                                                                          : "",
+                                                                  style: Utils.fonts(size: 10.0, color: Utils.whiteColor),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                            SizedBox(
+                                                              width: 5,
+                                                            ),
+                                                            Text('${Dataconstants.researchCallsModel.researchCalls.data[index].model.name}',
+                                                                style: Utils.fonts(
+                                                                  size: 12.0,
+                                                                ),
+                                                                textAlign: TextAlign.center),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    Container(
+                                                      width: MediaQuery.of(context).size.width / 3.5,
+                                                      child: Padding(
+                                                        padding: const EdgeInsets.symmetric(vertical: 0),
+                                                        child: Text('${Dataconstants.researchCallsModel.researchCalls.data[index].targetprice}',
+                                                            style: Utils.fonts(size: 14.0, color: Utils.greyColor), textAlign: TextAlign.center),
+                                                      ),
+                                                    ),
+                                                    Container(
+                                                      width: MediaQuery.of(context).size.width / 3.5,
+                                                      child: Padding(
+                                                        padding: const EdgeInsets.symmetric(vertical: 0.0),
+                                                        child: Container(
+                                                          // constraints: const BoxConstraints(
+                                                          //   maxWidth: 10,
+                                                          // ),
+                                                          decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5)), color: Utils.lightGreenColor.withOpacity(0.2)),
+                                                          child: Text(
+                                                            "",
+                                                            textAlign: TextAlign.end,
+                                                            style: Utils.fonts(size: 14.0, color: Utils.darkGreenColor),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ]),
+                                                ),
+                                              ),
+                                              Divider(thickness: 1)
+                                            ],
+                                          ),
+                                        );
+                                      })
+                                ],
+                              )
+                              // : Text(
+                              //     "No Research Information Available",
+                              //     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w300, color: ThemeConstants.themeMode.value == ThemeMode.light ? Color(0xff343434) : Color(0xffF1F1F1)),
+                              //   )
+
+                              // else
+                              //   Dataconstants.researchCallsModel.momentumList.length > 0
+                              //       ? Text("JM FINANCIALS")
+                              //       : Text(
+                              //           "No Research Information Available",
+                              //           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w300, color: ThemeConstants.themeMode.value == ThemeMode.light ? Color(0xff343434) : Color(0xffF1F1F1)),
+                              //         )
+                            ],
+                          )
                         ],
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Text('11', style: Utils.fonts(size: 14.0, color: Utils.greyColor), textAlign: TextAlign.center),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Container(
-                        constraints: const BoxConstraints(
-                          maxWidth: 10,
-                        ),
-                        decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5)), color: Utils.lightGreenColor.withOpacity(0.2)),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-                          child: Text(
-                            "39.5%",
-                            textAlign: TextAlign.end,
-                            style: Utils.fonts(size: 14.0, color: Utils.darkGreenColor),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ]),
-                  TableRow(children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Row(
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5)), color: ThemeConstants.buyColor),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-                              child: Text(
-                                "BUY",
-                                style: Utils.fonts(size: 12.0, color: Utils.blackColor),
-                              ),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 5,
-                          ),
-                          Text('RELIANCE', style: Utils.fonts(size: 14.0, color: Utils.blackColor), textAlign: TextAlign.center),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Text('11', style: Utils.fonts(size: 14.0, color: Utils.greyColor), textAlign: TextAlign.center),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Container(
-                        constraints: const BoxConstraints(
-                          maxWidth: 10,
-                        ),
-                        decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5)), color: Utils.lightGreenColor.withOpacity(0.2)),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-                          child: Text(
-                            "39.5%",
-                            textAlign: TextAlign.end,
-                            style: Utils.fonts(size: 14.0, color: Utils.darkGreenColor),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ]),
-                  TableRow(children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Row(
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5)), color: ThemeConstants.buyColor),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-                              child: Text(
-                                "BUY",
-                                style: Utils.fonts(size: 12.0, color: Utils.blackColor),
-                              ),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 5,
-                          ),
-                          Text('RELIANCE', style: Utils.fonts(size: 14.0, color: Utils.blackColor), textAlign: TextAlign.center),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Text('11', style: Utils.fonts(size: 14.0, color: Utils.greyColor), textAlign: TextAlign.center),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Container(
-                        constraints: const BoxConstraints(
-                          maxWidth: 10,
-                        ),
-                        decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5)), color: Utils.lightGreenColor.withOpacity(0.2)),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-                          child: Text(
-                            "39.5%",
-                            textAlign: TextAlign.end,
-                            style: Utils.fonts(size: 14.0, color: Utils.darkGreenColor),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ]),
-                  TableRow(children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Row(
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5)), color: ThemeConstants.buyColor),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-                              child: Text(
-                                "BUY",
-                                style: Utils.fonts(size: 12.0, color: Utils.blackColor),
-                              ),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 5,
-                          ),
-                          Text('RELIANCE', style: Utils.fonts(size: 14.0, color: Utils.blackColor), textAlign: TextAlign.center),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Text('11', style: Utils.fonts(size: 14.0, color: Utils.greyColor), textAlign: TextAlign.center),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Container(
-                        constraints: const BoxConstraints(
-                          maxWidth: 10,
-                        ),
-                        decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5)), color: Utils.lightGreenColor.withOpacity(0.2)),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-                          child: Text(
-                            "39.5%",
-                            textAlign: TextAlign.end,
-                            style: Utils.fonts(size: 14.0, color: Utils.darkGreenColor),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ]),
-                ],
-              )
-            ],
-          ),
-        ),
+                    );
+        }),
         Container(
           height: 4.0,
           width: MediaQuery.of(context).size.width,
@@ -7736,7 +8263,7 @@ class HomeWidgets {
             // (gettingNiftyModel.totalSellQty / totalMarketValue) == null
             //     ? 0.0
             //     : (gettingNiftyModel.totalSellQty / totalMarketValue),
-            title: marketBreadthNifty50 ? NseAdvanceController.nseAdvanceLength.toString() : BseAdvanceController.bseAdvanceLength.toString(),
+            title: " ",
             //"${gettingNiftyModel.totalSellQty / totalMarketValue}",
             radius: radius,
             titleStyle: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: const Color(0xffffffff)),
@@ -7746,7 +8273,7 @@ class HomeWidgets {
             color: const Color(0xfff8b250),
             value: marketBreadthNifty50 ? 50.0 - NseAdvanceController.nseAdvanceLength.toDouble() : 30 - BseAdvanceController.bseAdvanceLength.toDouble(),
             //gettingNiftyModel.totalBuyQty / totalMarketValue ?? 0,
-            title: marketBreadthNifty50 ? (50.0 - NseAdvanceController.nseAdvanceLength.toDouble()).toInt().toString() : (50.0 - BseAdvanceController.bseAdvanceLength.toDouble()).toInt().toString(),
+            title: " ",
             //"${gettingNiftyModel.totalBuyQty / totalMarketValue}",
             radius: radius,
             titleStyle: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: const Color(0xffffffff)),
@@ -7770,7 +8297,9 @@ class HomeWidgets {
                     children: [
                       Text(
                         "Market Breadth",
-                        style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+                        style: Utils.fonts(
+                          size: 17.0,
+                        ),
                       ),
                       Spacer(),
                       Row(
@@ -7955,29 +8484,75 @@ class HomeWidgets {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      Expanded(
-                        child: AspectRatio(
-                          aspectRatio: 1,
-                          child: PieChart(
-                            PieChartData(
-                                pieTouchData: PieTouchData(touchCallback: (FlTouchEvent event, pieTouchResponse) {
-                                  setState(() {
-                                    if (!event.isInterestedForInteractions || pieTouchResponse == null || pieTouchResponse.touchedSection == null) {
-                                      touchedIndex = -1;
-                                      return;
-                                    }
-                                    touchedIndex = pieTouchResponse.touchedSection.touchedSectionIndex;
-                                  });
-                                }),
-                                borderData: FlBorderData(
-                                  show: false,
-                                ),
-                                sectionsSpace: 0,
-                                centerSpaceRadius: 40,
-                                sections: showingSections(marketBreadthNifty50)),
+                      Stack(alignment: Alignment.center, children: [
+                        Container(
+                          height: 200,
+                          width: 200,
+                          child: AspectRatio(
+                            aspectRatio: 1,
+                            child: PieChart(
+                              PieChartData(
+                                  pieTouchData: PieTouchData(touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                                    setState(() {
+                                      if (!event.isInterestedForInteractions || pieTouchResponse == null || pieTouchResponse.touchedSection == null) {
+                                        touchedIndex = -1;
+                                        return;
+                                      }
+                                      touchedIndex = pieTouchResponse.touchedSection.touchedSectionIndex;
+                                    });
+                                  }),
+                                  borderData: FlBorderData(
+                                    show: false,
+                                  ),
+                                  sectionsSpace: 0,
+                                  centerSpaceRadius: 40,
+                                  sections: showingSections(marketBreadthNifty50)),
+                            ),
                           ),
                         ),
-                      ),
+                        Stack(alignment: Alignment.center, children: [
+                          Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                      height: 20,
+                                      child: Text(
+                                          marketBreadthNifty50
+                                              ? "${((NseAdvanceController.nseAdvanceLength / 50) * 100).toStringAsFixed(2)}%"
+                                              : "${((BseAdvanceController.bseAdvanceLength / 30) * 100).toStringAsFixed(2)}%",
+                                          style: Utils.fonts(size: 10.0))),
+                                  SizedBox(
+                                    width: 20,
+                                  ),
+                                ],
+                              ),
+                              SizedBox(
+                                height: 10,
+                              ),
+                              Row(
+                                children: [
+                                  SizedBox(
+                                    width: 30,
+                                  ),
+                                  Container(
+                                    height: 20,
+                                    child: Text(
+                                        marketBreadthNifty50
+                                            ? "${(((NseAdvanceController.nseAdvanceLength / 50) * 100) - 100).abs().toStringAsFixed(2)}%"
+                                            : "${(((BseAdvanceController.bseAdvanceLength / 30) * 100) - 100).abs().toStringAsFixed(2)}%",
+                                        style: Utils.fonts(size: 10.0)),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          Transform.rotate(
+                            angle: 1,
+                            child: Container(height: 50, width: 1, decoration: BoxDecoration(border: Border.all())),
+                          )
+                        ])
+                      ]),
                       Column(
                         children: [
                           Row(
@@ -8042,55 +8617,6 @@ class HomeWidgets {
     return StatefulBuilder(builder: (BuildContext context, StateSetter setState) {
       return Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Container(
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(5.0), color: Utils.primaryColor),
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "Refer a Friend",
-                            style: Utils.fonts(size: 14.0, color: Utils.whiteColor, fontWeight: FontWeight.w500),
-                          ),
-                          SizedBox(
-                            height: 5,
-                          ),
-                          Text(
-                            "Sharing just got more rewarding",
-                            style: Utils.fonts(size: 12.0, color: Utils.whiteColor, fontWeight: FontWeight.w500),
-                          ),
-                          SizedBox(
-                            height: 10,
-                          ),
-                          Container(
-                            decoration: BoxDecoration(color: Utils.whiteColor, borderRadius: BorderRadius.all(Radius.circular(2.0))),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 5.0),
-                              child: Text(
-                                "Start Earning Now",
-                                style: Utils.fonts(size: 12.0, color: Utils.lightGreenColor),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SvgPicture.asset(
-                      "assets/appImages/dashboard/Group 11914.svg",
-                      height: 100,
-                      width: 100,
-                    )
-                  ],
-                ),
-              ),
-            ),
-          ),
           SizedBox(
             height: 10,
           ),
@@ -8098,30 +8624,33 @@ class HomeWidgets {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                Row(
-                  children: [
-                    InkWell(
-                      onTap: () {
-                        setState(() {
-                          topPerformingIndustriesExpanded ? topPerformingIndustriesExpanded = false : topPerformingIndustriesExpanded = true;
-                        });
-                      },
-                      child: Text(
-                        "Top Performing Industries",
-                        style: Utils.fonts(size: 17.0, color: Utils.blackColor),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 10,
-                    ),
-                    SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
-                    Spacer(),
-                    InkWell(
+                InkWell(
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => TopPerformingIndustriesPage()));
+                  },
+                  child: Row(
+                    children: [
+                      InkWell(
                         onTap: () {
-                          HomeWidgets.scrollTop();
+                          setState(() {
+                            topPerformingIndustriesExpanded ? topPerformingIndustriesExpanded = false : topPerformingIndustriesExpanded = true;
+                          });
                         },
-                        child: SvgPicture.asset("assets/appImages/markets/up_arrow.svg"))
-                  ],
+                        child: Text(
+                          "Top Performing Industries",
+                          style: Utils.fonts(
+                            size: 17.0,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 10,
+                      ),
+                      SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
+                      Spacer(),
+                      SvgPicture.asset("assets/appImages/markets/up_arrow.svg")
+                    ],
+                  ),
                 ),
                 // SizedBox(
                 //   height: 20,
@@ -8331,9 +8860,6 @@ class HomeWidgets {
                 //     ],
                 //   ),
                 // ),
-                SizedBox(
-                  height: 10,
-                ),
                 Obx(() {
                   return TopPerformingIndustriesController.isLoading.value
                       ? Center(child: CircularProgressIndicator())
@@ -8342,11 +8868,7 @@ class HomeWidgets {
                           : ListView.builder(
                               shrinkWrap: true,
                               physics: NeverScrollableScrollPhysics(),
-                              itemCount: topPerformingIndustriesExpanded
-                                  ? TopPerformingIndustriesController.getTopPerformingIndustriesListItems.length
-                                  : TopPerformingIndustriesController.getTopPerformingIndustriesListItems.length < 4
-                                      ? TopPerformingIndustriesController.getTopPerformingIndustriesListItems.length
-                                      : 4,
+                              itemCount: 4,
                               itemBuilder: (BuildContext context, int index) {
                                 return Padding(
                                   padding: const EdgeInsets.symmetric(vertical: 20.0),
@@ -8358,20 +8880,26 @@ class HomeWidgets {
                                         child: Text(
                                           TopPerformingIndustriesController.getTopPerformingIndustriesListItems[index].sectorName,
                                           overflow: TextOverflow.clip,
-                                          style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
+                                          style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
                                         ),
                                       ),
-                                      Container(
-                                        width: MediaQuery.of(context).size.width * 0.3,
-                                        child: Row(
-                                          children: [
-                                            Container(
-                                              height: 15,
-                                              width: TopPerformingIndustriesController.getTopPerformingIndustriesListItems[index].deliveryPerChange * 0.09,
-                                              decoration:
-                                                  BoxDecoration(color: Utils.lightGreenColor, borderRadius: BorderRadius.only(topRight: Radius.circular(15.0), bottomRight: Radius.circular(15.0))),
-                                            ),
-                                          ],
+                                      Padding(
+                                        padding: const EdgeInsets.only(right: 8.0),
+                                        child: Container(
+                                          width: MediaQuery.of(context).size.width * 0.3,
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                height: 15,
+                                                width:
+                                                    TopPerformingIndustriesController.getTopPerformingIndustriesListItems[index].deliveryPerChange * 0.09 >= MediaQuery.of(context).size.height * 0.15
+                                                        ? MediaQuery.of(context).size.height * 0.15
+                                                        : TopPerformingIndustriesController.getTopPerformingIndustriesListItems[index].deliveryPerChange * 0.08,
+                                                decoration:
+                                                    BoxDecoration(color: Utils.lightGreenColor, borderRadius: BorderRadius.only(topRight: Radius.circular(15.0), bottomRight: Radius.circular(15.0))),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                       Text(
@@ -8421,7 +8949,7 @@ class HomeWidgets {
                       },
                       child: Text(
                         "Orders",
-                        style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+                        style: Utils.fonts(size: 17.0),
                       ),
                     ),
                     SizedBox(
@@ -8431,6 +8959,8 @@ class HomeWidgets {
                         onTap: () {
                           setState(() {
                             InAppSelection.mainScreenIndex = 3;
+                            Dataconstants.ordersScreenIndex = 1;
+                            setState(() {});
                             Navigator.of(context).pushAndRemoveUntil(
                                 MaterialPageRoute(
                                     builder: (_) => MainScreen(
@@ -8467,7 +8997,10 @@ class HomeWidgets {
                                   ),
                                   Text(
                                     "You have no Executed Orders in Order Book",
-                                    style: Utils.fonts(size: 15.0, fontWeight: FontWeight.w400, color: Colors.grey[600]),
+                                    style: Utils.fonts(
+                                      size: 15.0,
+                                      fontWeight: FontWeight.w400,
+                                    ),
                                     textAlign: TextAlign.center,
                                   ),
                                   const SizedBox(
@@ -8502,189 +9035,206 @@ class HomeWidgets {
                             shrinkWrap: true,
                             itemCount: OrderBookController.executedList.length < 3 ? OrderBookController.executedList.length : 3,
                             itemBuilder: (context, index) {
-                              return Column(
-                                children: [
-                                  SizedBox(
-                                    height: 10,
-                                  ),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          /* Displaying the Script name */
-                                          Container(
-                                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                            decoration: BoxDecoration(
-                                                borderRadius: BorderRadius.all(Radius.circular(5)),
-                                                color: OrderBookController.executedList[index].transactiontype == 'BUY' ? ThemeConstants.buyColor : ThemeConstants.sellColor),
-                                            child: Text(
-                                              OrderBookController.executedList[index].transactiontype,
-                                              style: Utils.fonts(color: Utils.whiteColor, size: 10.0, fontWeight: FontWeight.w600),
+                              return InkWell(
+                                onTap : () {
+                                  Navigator.push(context, MaterialPageRoute(builder: (context) => ScriptInfo(
+                                    CommonFunction.getScripDataModel(
+                                      exch: OrderBookController.executedList[index].model.exch,
+                                      exchCode: OrderBookController.executedList[index].model.exchCode
+                                    ),false
+                                  )));
+                                },
+                                child: Column(
+                                  children: [
+                                    SizedBox(
+                                      height: 10,
+                                    ),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            /* Displaying the Script name */
+                                            Container(
+                                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                              decoration: BoxDecoration(
+                                                  borderRadius: BorderRadius.all(Radius.circular(5)),
+                                                  color: OrderBookController.executedList[index].transactiontype == 'BUY' ? ThemeConstants.buyColor : ThemeConstants.sellColor),
+                                              child: Text(
+                                                OrderBookController.executedList[index].transactiontype,
+                                                style: Utils.fonts(color: Utils.whiteColor, size: 10.0, fontWeight: FontWeight.w600),
+                                              ),
                                             ),
-                                          ),
-                                          /* Displaying the Script Description */
-                                          Container(
-                                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                            decoration: BoxDecoration(
-                                                borderRadius: BorderRadius.all(Radius.circular(5)),
-                                                color: OrderBookController.executedList[index].status == 'complete' || OrderBookController.executedList[index].status == 'open'
-                                                    ? ThemeConstants.buyColor.withOpacity(0.2)
-                                                    : OrderBookController.executedList[index].status == 'rejected'
-                                                        ? ThemeConstants.sellColor.withOpacity(0.2)
-                                                        : Utils.greyColor.withOpacity(0.2)),
-                                            child: Text(
-                                              OrderBookController.executedList[index].status == 'complete' || OrderBookController.executedList[index].status == 'open'
-                                                  ? 'EXECUTED'
-                                                  : OrderBookController.executedList[index].status.toUpperCase(),
-                                              style: Utils.fonts(
+                                            /* Displaying the Script Description */
+                                            Container(
+                                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                  borderRadius: BorderRadius.all(Radius.circular(5)),
                                                   color: OrderBookController.executedList[index].status == 'complete' || OrderBookController.executedList[index].status == 'open'
-                                                      ? ThemeConstants.buyColor
+                                                      ? ThemeConstants.buyColor.withOpacity(0.2)
                                                       : OrderBookController.executedList[index].status == 'rejected'
-                                                          ? ThemeConstants.sellColor
-                                                          : Utils.greyColor,
-                                                  size: 10.0,
-                                                  fontWeight: FontWeight.w600),
+                                                          ? ThemeConstants.sellColor.withOpacity(0.2)
+                                                          : Utils.greyColor.withOpacity(0.2)),
+                                              child: Text(
+                                                OrderBookController.executedList[index].status == 'complete' || OrderBookController.executedList[index].status == 'open'
+                                                    ? 'EXECUTED'
+                                                    : OrderBookController.executedList[index].status.toUpperCase(),
+                                                style: Utils.fonts(
+                                                    color: OrderBookController.executedList[index].status == 'complete' || OrderBookController.executedList[index].status == 'open'
+                                                        ? ThemeConstants.buyColor
+                                                        : OrderBookController.executedList[index].status == 'rejected'
+                                                            ? ThemeConstants.sellColor
+                                                            : Utils.greyColor,
+                                                    size: 10.0,
+                                                    fontWeight: FontWeight.w600),
+                                              ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(
-                                        height: 5,
-                                      ),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(OrderBookController.executedList[index].model.name.toUpperCase(), style: Utils.fonts(size: 16.0, fontWeight: FontWeight.bold, color: Utils.blackColor)
-                                              // TextStyle(fontSize: 13, color: Colors.grey[600]),
-                                              ),
-                                          Text(
-                                              "${OrderBookController.executedList[index].status == 'open' ? OrderBookController.executedList[index].filledshares : OrderBookController.executedList[index].quantity}" +
-                                                  ' @ ' +
-                                                  '${OrderBookController.executedList[index].ordertype == 'MARKET' ? OrderBookController.executedList[index].averageprice : OrderBookController.executedList[index].price}',
-                                              style: Utils.fonts(size: 16.0, fontWeight: FontWeight.bold, color: Utils.blackColor)),
-                                        ],
-                                      ),
-                                      // /* Displaying the Script Description */
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              RichText(
-                                                text: TextSpan(
-                                                    text: OrderBookController.executedList[index].exchange == 'NSE'
-                                                        ? OrderBookController.executedList[index].exchange.toUpperCase()
-                                                        : OrderBookController.executedList[index].exchange == 'BSE'
-                                                            ? OrderBookController.executedList[index].exchange.toUpperCase()
-                                                            : OrderBookController.executedList[index].expirydate.split(',')[0].toUpperCase(),
-                                                    style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w400, color: Utils.greyColor),
-                                                    children: [
-                                                      if (OrderBookController.executedList[index].model.exchCategory != ExchCategory.nseEquity ||
-                                                          OrderBookController.executedList[index].model.exchCategory != ExchCategory.bseEquity)
-                                                        TextSpan(text: ' '),
-                                                      if (OrderBookController.executedList[index].model.exchCategory != ExchCategory.nseEquity ||
-                                                          OrderBookController.executedList[index].model.exchCategory != ExchCategory.bseEquity)
-                                                        TextSpan(
-                                                          text: OrderBookController.executedList[index].model.exchCategory == ExchCategory.nseFuture ||
-                                                                  OrderBookController.executedList[index].model.exchCategory == ExchCategory.bseCurrenyFutures ||
-                                                                  OrderBookController.executedList[index].model.exchCategory == ExchCategory.currenyFutures ||
-                                                                  OrderBookController.executedList[index].model.exchCategory == ExchCategory.mcxFutures
-                                                              ? 'FUT'
-                                                              : OrderBookController.executedList[index].model.exchCategory == ExchCategory.nseOptions ||
-                                                                      OrderBookController.executedList[index].model.exchCategory == ExchCategory.bseCurrenyOptions ||
-                                                                      OrderBookController.executedList[index].model.exchCategory == ExchCategory.currenyOptions ||
-                                                                      OrderBookController.executedList[index].model.exchCategory == ExchCategory.mcxOptions
-                                                                  ? OrderBookController.executedList[index].strikeprice.split('.')[0]
-                                                                  : '',
-                                                          style: Utils.fonts(
-                                                              size: 12.0,
-                                                              fontWeight: FontWeight.w400,
-                                                              color: OrderBookController.executedList[index].model.exchCategory == ExchCategory.nseFuture ||
-                                                                      OrderBookController.executedList[index].model.exchCategory == ExchCategory.bseCurrenyFutures ||
-                                                                      OrderBookController.executedList[index].model.exchCategory == ExchCategory.currenyFutures ||
-                                                                      OrderBookController.executedList[index].model.exchCategory == ExchCategory.mcxFutures
-                                                                  ? Utils.primaryColor
-                                                                  : Utils.greyColor),
-                                                        ),
-                                                      if (OrderBookController.executedList[index].model.exchCategory == ExchCategory.nseOptions ||
-                                                          OrderBookController.executedList[index].model.exchCategory == ExchCategory.bseCurrenyOptions ||
-                                                          OrderBookController.executedList[index].model.exchCategory == ExchCategory.currenyOptions ||
-                                                          OrderBookController.executedList[index].model.exchCategory == ExchCategory.mcxOptions)
-                                                        TextSpan(text: ' '),
-                                                      if (OrderBookController.executedList[index].model.exchCategory == ExchCategory.nseOptions ||
-                                                          OrderBookController.executedList[index].model.exchCategory == ExchCategory.bseCurrenyOptions ||
-                                                          OrderBookController.executedList[index].model.exchCategory == ExchCategory.currenyOptions ||
-                                                          OrderBookController.executedList[index].model.exchCategory == ExchCategory.mcxOptions)
-                                                        TextSpan(
-                                                          text: OrderBookController.executedList[index].model.cpType == 3 ? 'CE' : 'PE',
-                                                          style: Utils.fonts(
-                                                              size: 12.0,
-                                                              fontWeight: FontWeight.w400,
-                                                              color: OrderBookController.executedList[index].model.cpType == 3 ? Utils.lightGreenColor : Utils.lightRedColor),
-                                                        )
-                                                    ]),
-                                              ),
-                                              const SizedBox(
-                                                width: 5,
-                                              ),
-                                              Container(height: 3, width: 3, decoration: BoxDecoration(color: Utils.greyColor, shape: BoxShape.circle)),
-                                              const SizedBox(
-                                                width: 5,
-                                              ),
-                                              Text(OrderBookController.executedList[index].producttype.toUpperCase(),
-                                                  style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w400, color: Utils.greyColor)),
-                                            ],
-                                          ),
-                                          /* Displaying the price change and percentage change of the script */
-                                          Observer(
-                                            builder: (_) => Row(
+                                          ],
+                                        ),
+                                        const SizedBox(
+                                          height: 5,
+                                        ),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(OrderBookController.executedList[index].model.name.toUpperCase(),
+                                                style: Utils.fonts(
+                                                  size: 16.0,
+                                                  fontWeight: FontWeight.bold,
+                                                )
+                                                // TextStyle(fontSize: 13, color: Colors.grey[600]),
+                                                ),
+                                            Text(
+                                                "${OrderBookController.executedList[index].status == 'open' ? OrderBookController.executedList[index].filledshares : OrderBookController.executedList[index].quantity}" +
+                                                    ' @ ' +
+                                                    '${OrderBookController.executedList[index].ordertype == 'MARKET' ? OrderBookController.executedList[index].averageprice : OrderBookController.executedList[index].price}',
+                                                style: Utils.fonts(
+                                                  size: 16.0,
+                                                  fontWeight: FontWeight.bold,
+                                                )),
+                                          ],
+                                        ),
+                                        // /* Displaying the Script Description */
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Row(
                                               children: [
-                                                Text("LTP", style: Utils.fonts(color: Utils.greyColor, size: 12.0, fontWeight: FontWeight.w400)),
-                                                SizedBox(
+                                                RichText(
+                                                  text: TextSpan(
+                                                      text: OrderBookController.executedList[index].exchange == 'NSE'
+                                                          ? OrderBookController.executedList[index].exchange.toUpperCase()
+                                                          : OrderBookController.executedList[index].exchange == 'BSE'
+                                                              ? OrderBookController.executedList[index].exchange.toUpperCase()
+                                                              : OrderBookController.executedList[index].expirydate.split(',')[0].toUpperCase(),
+                                                      style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w400, color: Utils.greyColor),
+                                                      children: [
+                                                        if (OrderBookController.executedList[index].model.exchCategory != ExchCategory.nseEquity ||
+                                                            OrderBookController.executedList[index].model.exchCategory != ExchCategory.bseEquity)
+                                                          TextSpan(text: ' '),
+                                                        if (OrderBookController.executedList[index].model.exchCategory != ExchCategory.nseEquity ||
+                                                            OrderBookController.executedList[index].model.exchCategory != ExchCategory.bseEquity)
+                                                          TextSpan(
+                                                            text: OrderBookController.executedList[index].model.exchCategory == ExchCategory.nseFuture ||
+                                                                    OrderBookController.executedList[index].model.exchCategory == ExchCategory.bseCurrenyFutures ||
+                                                                    OrderBookController.executedList[index].model.exchCategory == ExchCategory.currenyFutures ||
+                                                                    OrderBookController.executedList[index].model.exchCategory == ExchCategory.mcxFutures
+                                                                ? 'FUT'
+                                                                : OrderBookController.executedList[index].model.exchCategory == ExchCategory.nseOptions ||
+                                                                        OrderBookController.executedList[index].model.exchCategory == ExchCategory.bseCurrenyOptions ||
+                                                                        OrderBookController.executedList[index].model.exchCategory == ExchCategory.currenyOptions ||
+                                                                        OrderBookController.executedList[index].model.exchCategory == ExchCategory.mcxOptions
+                                                                    ? OrderBookController.executedList[index].strikeprice.split('.')[0]
+                                                                    : '',
+                                                            style: Utils.fonts(
+                                                                size: 12.0,
+                                                                fontWeight: FontWeight.w400,
+                                                                color: OrderBookController.executedList[index].model.exchCategory == ExchCategory.nseFuture ||
+                                                                        OrderBookController.executedList[index].model.exchCategory == ExchCategory.bseCurrenyFutures ||
+                                                                        OrderBookController.executedList[index].model.exchCategory == ExchCategory.currenyFutures ||
+                                                                        OrderBookController.executedList[index].model.exchCategory == ExchCategory.mcxFutures
+                                                                    ? Utils.primaryColor
+                                                                    : Utils.greyColor),
+                                                          ),
+                                                        if (OrderBookController.executedList[index].model.exchCategory == ExchCategory.nseOptions ||
+                                                            OrderBookController.executedList[index].model.exchCategory == ExchCategory.bseCurrenyOptions ||
+                                                            OrderBookController.executedList[index].model.exchCategory == ExchCategory.currenyOptions ||
+                                                            OrderBookController.executedList[index].model.exchCategory == ExchCategory.mcxOptions)
+                                                          TextSpan(text: ' '),
+                                                        if (OrderBookController.executedList[index].model.exchCategory == ExchCategory.nseOptions ||
+                                                            OrderBookController.executedList[index].model.exchCategory == ExchCategory.bseCurrenyOptions ||
+                                                            OrderBookController.executedList[index].model.exchCategory == ExchCategory.currenyOptions ||
+                                                            OrderBookController.executedList[index].model.exchCategory == ExchCategory.mcxOptions)
+                                                          TextSpan(
+                                                            text: OrderBookController.executedList[index].model.cpType == 3 ? 'CE' : 'PE',
+                                                            style: Utils.fonts(
+                                                                size: 12.0,
+                                                                fontWeight: FontWeight.w400,
+                                                                color: OrderBookController.executedList[index].model.cpType == 3 ? Utils.lightGreenColor : Utils.lightRedColor),
+                                                          )
+                                                      ]),
+                                                ),
+                                                const SizedBox(
                                                   width: 5,
                                                 ),
-                                                Text(
-                                                  OrderBookController.executedList[index].model.close.toStringAsFixed(OrderBookController.executedList[index].model.precision),
-                                                  style: Utils.fonts(
-                                                      color: OrderBookController.executedList[index].model.close > OrderBookController.executedList[index].model.prevTickRate
-                                                          ? ThemeConstants.buyColor
-                                                          : OrderBookController.executedList[index].model.close < OrderBookController.executedList[index].model.prevTickRate
-                                                              ? ThemeConstants.sellColor
-                                                              : theme.errorColor,
-                                                      size: 14.0,
-                                                      fontWeight: FontWeight.w600),
+                                                Container(height: 3, width: 3, decoration: BoxDecoration(color: Utils.greyColor, shape: BoxShape.circle)),
+                                                const SizedBox(
+                                                  width: 5,
                                                 ),
-                                                Container(
-                                                  padding: const EdgeInsets.all(0.0),
-                                                  child: Icon(
-                                                    OrderBookController.executedList[index].model.close > OrderBookController.executedList[index].model.prevTickRate
-                                                        ? Icons.arrow_drop_up_rounded
-                                                        : Icons.arrow_drop_down_rounded,
-                                                    color: OrderBookController.executedList[index].model.close > OrderBookController.executedList[index].model.prevTickRate
-                                                        ? ThemeConstants.buyColor
-                                                        : ThemeConstants.sellColor,
-                                                  ),
-                                                )
+                                                Text(OrderBookController.executedList[index].producttype.toUpperCase(),
+                                                    style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w400, color: Utils.greyColor)),
                                               ],
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(
-                                        height: 5,
-                                      ),
-                                      // /* Displaying the Script buy sell status */
-                                    ],
-                                  ),
-                                  SizedBox(
-                                    height: 10,
-                                  ),
-                                  const Divider(
-                                    thickness: 1.5,
-                                  )
-                                ],
+                                            /* Displaying the price change and percentage change of the script */
+                                            Observer(
+                                              builder: (_) => Row(
+                                                children: [
+                                                  Text("LTP", style: Utils.fonts(color: Utils.greyColor, size: 12.0, fontWeight: FontWeight.w400)),
+                                                  SizedBox(
+                                                    width: 5,
+                                                  ),
+                                                  Text(
+                                                    OrderBookController.executedList[index].model.close.toStringAsFixed(OrderBookController.executedList[index].model.precision),
+                                                    style: Utils.fonts(
+                                                        color: OrderBookController.executedList[index].model.close > OrderBookController.executedList[index].model.prevTickRate
+                                                            ? ThemeConstants.buyColor
+                                                            : OrderBookController.executedList[index].model.close < OrderBookController.executedList[index].model.prevTickRate
+                                                                ? ThemeConstants.sellColor
+                                                                : theme.errorColor,
+                                                        size: 14.0,
+                                                        fontWeight: FontWeight.w600),
+                                                  ),
+                                                  Container(
+                                                    padding: const EdgeInsets.all(0.0),
+                                                    child: Icon(
+                                                      OrderBookController.executedList[index].model.close > OrderBookController.executedList[index].model.prevTickRate
+                                                          ? Icons.arrow_drop_up_rounded
+                                                          : Icons.arrow_drop_down_rounded,
+                                                      color: OrderBookController.executedList[index].model.close > OrderBookController.executedList[index].model.prevTickRate
+                                                          ? ThemeConstants.buyColor
+                                                          : ThemeConstants.sellColor,
+                                                    ),
+                                                  )
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(
+                                          height: 5,
+                                        ),
+                                        // /* Displaying the Script buy sell status */
+                                      ],
+                                    ),
+                                    SizedBox(
+                                      height: 10,
+                                    ),
+                                    const Divider(
+                                      thickness: 1.5,
+                                    )
+                                  ],
+                                ),
                               );
                             });
                 }),
@@ -8711,19 +9261,28 @@ class HomeWidgets {
               children: [
                 InkWell(
                   onTap: () {
-                    if (topGainersExpanded == false) {
-                      topGainersExpanded = true;
-                    } else if (topGainersExpanded == true) {
-                      topGainersExpanded = false;
-                    }
-                    setState(() {});
+                    // if (topGainersExpanded == false) {
+                    //   topGainersExpanded = true;
+                    // } else if (topGainersExpanded == true) {
+                    //   topGainersExpanded = false;
+                    // }
+                    // setState(() {});
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => MarketStatsNext(
+                                  name: "Top Gainers",
+                                  currentTabIndex: 0,
+                                )));
                   },
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: [
                       Text(
                         "Top Gainers",
-                        style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+                        style: Utils.fonts(
+                          size: 17.0,
+                        ),
                       ),
                       SizedBox(
                         width: 10,
@@ -8752,7 +9311,7 @@ class HomeWidgets {
                           InkWell(
                             onTap: () {
                               topGainersTab = 1;
-                              Dataconstants.topGainersController.getTopGainers("day");
+                              Dataconstants.topGainersController.getTopGainers("nse", "nifty", "day");
                               setState(() {});
                             },
                             child: Container(
@@ -8786,7 +9345,8 @@ class HomeWidgets {
                           InkWell(
                             onTap: () {
                               topGainersTab = 3;
-                              Dataconstants.topGainersController.getTopGainers("week");
+                              Dataconstants.topGainersController.getTopGainers("nse", "nifty", "week");
+
                               setState(() {});
                             },
                             child: Container(
@@ -8820,7 +9380,7 @@ class HomeWidgets {
                           InkWell(
                             onTap: () {
                               topGainersTab = 2;
-                              Dataconstants.topGainersController.getTopGainers("month");
+                              Dataconstants.topGainersController.getTopGainers("nse", "nifty", "month");
                               setState(() {});
                             },
                             child: Container(
@@ -8906,63 +9466,80 @@ class HomeWidgets {
                       )
                     : Obx(() {
                         return TopGainersController.isLoading.value
-                            ? Align(
-                                alignment: Alignment.center,
-                                child: Center(
-                                  child: CircularProgressIndicator()
-                                )
-                              )
+                            ? Container(height: MediaQuery.of(context).size.height * 0.45, child: Align(alignment: Alignment.center, child: Center(child: CircularProgressIndicator())))
                             : TopGainersController.getTopGainersListItems.length > 0
                                 ? Padding(
                                     padding: const EdgeInsets.symmetric(vertical: 8.0),
                                     child: ListView.builder(
                                       shrinkWrap: true,
                                       physics: NeverScrollableScrollPhysics(),
-                                      itemCount: topGainersExpanded
-                                          ? TopGainersController.getTopGainersListItems.length
-                                          : TopGainersController.getTopGainersListItems.length < 4
-                                              ? TopGainersController.getTopGainersListItems.length
-                                              : 4,
+                                      itemCount: TopGainersController.getTopGainersListItems.length <= 4 ? TopGainersController.getTopGainersListItems.length : 4,
                                       itemBuilder: (BuildContext context, int index) {
                                         return Column(
                                           children: [
-                                            Padding(
-                                              padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                              child: Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  Expanded(
-                                                    flex: 2,
-                                                    child: Text(
-                                                      TopGainersController.getTopGainersListItems[index].symbol,
-                                                      style: Utils.fonts(),
-                                                    ),
-                                                  ),
-                                                  Expanded(
-                                                    flex: 1,
-                                                    child: Text(
-                                                      "${TopGainersController.getTopGainersListItems[index].perchg.toStringAsFixed(2)} %",
-                                                      style: Utils.fonts(
-                                                        color: Utils.greyColor,
+                                            InkWell(
+                                              onTap: () {
+                                                Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                        builder: (context) => ScriptInfo(
+                                                            CommonFunction.getScripDataModel(
+                                                                exch: int.parse(TopGainersController.getTopGainersListItems[index].scCode) >= 500000 ? "B" : "N",
+                                                                exchCode: int.parse(TopGainersController.getTopGainersListItems[index].scCode.toString())),
+                                                            false)));
+                                              },
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                                child: Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Expanded(
+                                                      flex: 2,
+                                                      child: Text(
+                                                        TopGainersController.getTopGainersListItems[index].symbol,
+                                                        style: Utils.fonts(),
                                                       ),
                                                     ),
-                                                  ),
-                                                  Expanded(
-                                                    flex: 1,
-                                                    child: Row(
-                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                      children: [
-                                                        SizedBox(),
-                                                        Text(
-                                                          TopGainersController.getTopGainersListItems[index].prevClose.toString(),
-                                                          style: Utils.fonts(
-                                                            color: Utils.mediumGreenColor,
+                                                    Expanded(
+                                                      flex: 1,
+                                                      child: Row(
+                                                        children: [
+                                                          Padding(
+                                                            padding: const EdgeInsets.only(right: 8.0),
+                                                            child: RotatedBox(
+                                                              quarterTurns: TopGainersController.getTopGainersListItems[index].perchg > 0 ? 4 : 2,
+                                                              child: SvgPicture.asset(
+                                                                "assets/appImages/inverted_rectangle.svg",
+                                                                color: Utils.lightGreenColor,
+                                                              ),
+                                                            ),
                                                           ),
-                                                        ),
-                                                      ],
+                                                          Text(
+                                                            "${TopGainersController.getTopGainersListItems[index].perchg.toStringAsFixed(2)} %",
+                                                            style: Utils.fonts(
+                                                              color: Utils.mediumGreenColor,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
                                                     ),
-                                                  )
-                                                ],
+                                                    Expanded(
+                                                      flex: 1,
+                                                      child: Row(
+                                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                        children: [
+                                                          SizedBox(),
+                                                          Text(
+                                                            TopGainersController.getTopGainersListItems[index].prevClose.toString(),
+                                                            style: Utils.fonts(
+                                                              color: Utils.greyColor,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    )
+                                                  ],
+                                                ),
                                               ),
                                             ),
                                             Divider(
@@ -8999,6 +9576,7 @@ class HomeWidgets {
 
   static Widget events() {
     return StatefulBuilder(builder: (BuildContext context, StateSetter setState) {
+      // print(DateFormat.yMd(EventsDividendController.getEventsDividendListItems[0].divDate.toString()));
       return Column(
         children: [
           Padding(
@@ -9006,30 +9584,46 @@ class HomeWidgets {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    InkWell(
-                      onTap: () {
-                        setState(() {
-                          eventsExpanded ? eventsExpanded = false : eventsExpanded = true;
-                        });
-                      },
-                      child: Text(
-                        "Events",
-                        style: Utils.fonts(size: 17.0, color: Utils.blackColor),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 10,
-                    ),
-                    SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
-                    Spacer(),
-                    InkWell(
+                InkWell(
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => EventsPage()));
+                  },
+                  child: Row(
+                    children: [
+                      InkWell(
                         onTap: () {
-                          HomeWidgets.scrollTop();
+                          // setState(() {
+                          //   eventsExpanded
+                          //       ? eventsExpanded = false
+                          //       : eventsExpanded = true;
+                          // });
+                          // Navigator.push(
+                          //     context,
+                          //     MaterialPageRoute(
+                          //         builder: (context) => MarketStatsNext(
+                          //               name: "Events",
+                          //               currentTabIndex: 3,
+                          //             )));
                         },
-                        child: SvgPicture.asset("assets/appImages/markets/up_arrow.svg"))
-                  ],
+                        child: Text(
+                          "Events",
+                          style: Utils.fonts(
+                            size: 17.0,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 10,
+                      ),
+                      SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
+                      Spacer(),
+                      InkWell(
+                          onTap: () {
+                            HomeWidgets.scrollTop();
+                          },
+                          child: SvgPicture.asset("assets/appImages/markets/up_arrow.svg"))
+                    ],
+                  ),
                 ),
                 SizedBox(
                   height: 20,
@@ -9251,136 +9845,275 @@ class HomeWidgets {
                 SizedBox(
                   height: 10,
                 ),
+                // Row(children: [
+                //   Container(
+                //     width: MediaQuery.of(context).size.width * 0.3,
+                //     child: Text("Symbol", style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
+                //   ),
+                //   mostActiveTab == 2
+                //       ? Container(width: MediaQuery.of(context).size.width * 0.3, child: Text("Value Traded(Cr)", style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)))
+                //       : mostActiveTab == 1
+                //           ? Container(
+                //               width: MediaQuery.of(context).size.width * 0.3,
+                //               child: Text("Ex-Date", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)))
+                //           : mostActiveTab == 3 || mostActiveTab == 4 || mostActiveTab == 5
+                //               ? Container(
+                //                   width: MediaQuery.of(context).size.width * 0.3,
+                //                   child: Text("Traded Qty", textAlign: TextAlign.center, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)))
+                //               : Container(
+                //                   width: MediaQuery.of(context).size.width * 0.3,
+                //                   child: Text("Volume", textAlign: TextAlign.center, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500))),
+                //   mostActiveTab == 3 || mostActiveTab == 4 || mostActiveTab == 5
+                //       ? Container(width: MediaQuery.of(context).size.width * 0.3, child: Text("Turnover", style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)))
+                //       : Column(
+                //           crossAxisAlignment: CrossAxisAlignment.end,
+                //           children: [
+                //             mostActiveTab == 1
+                //                 ? Container(
+                //                     width: MediaQuery.of(context).size.width * 0.3,
+                //                     child: Text("Dividend", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)))
+                //                 : mostActiveTab == 2
+                //                     ? Container(
+                //                         width: MediaQuery.of(context).size.width * 0.3,
+                //                         child: Text("Bonus Ratio", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)))
+                //                     : Container(
+                //                         decoration: BoxDecoration(border: Border.all()),
+                //                         width: MediaQuery.of(context).size.width * 0.3,
+                //                         child: Text("LTP", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500))),
+                //             mostActiveTab == 1
+                //                 ? SizedBox.shrink()
+                //                 : Container(
+                //                     width: MediaQuery.of(context).size.width * 0.3,
+                //                     child: Text("%Chg", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500))),
+                //           ],
+                //         ),
+                // ]),
+                // SizedBox(height: 10),
                 Obx(() {
                   return eventsTab == 1
                       ? EventsDividendController.isLoading.value
-                          ? Center(child: CircularProgressIndicator())
+                          ? Container(height: MediaQuery.of(context).size.height * 0.45, child: Center(child: CircularProgressIndicator()))
                           : EventsDividendController.getEventsDividendListItems.isEmpty
                               ? Center(child: Text("No Data available"))
                               : Column(
                                   children: [
-                                    SizedBox(height: 10),
+                                    Row(children: [
+                                      Container(
+                                        width: MediaQuery.of(context).size.width * 0.3,
+                                        child: Text("Symbol", style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
+                                      ),
+                                      Container(
+                                        width: MediaQuery.of(context).size.width * 0.3,
+                                        child: Text("Ex-Date", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
+                                      ),
+                                      Container(
+                                        width: MediaQuery.of(context).size.width * 0.3,
+                                        child: Text("Dividend", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
+                                      ),
+                                    ]),
                                     Divider(thickness: 1),
                                     ListView.builder(
                                       shrinkWrap: true,
                                       physics: NeverScrollableScrollPhysics(),
-                                      itemCount: eventsExpanded
-                                          ? EventsDividendController.getEventsDividendListItems.length
-                                          : EventsDividendController.getEventsDividendListItems.length < 4
-                                              ? EventsDividendController.getEventsDividendListItems.length
-                                              : 4,
+                                      itemCount: EventsDividendController.getEventsDividendListItems.length <= 4 ? EventsDividendController.getEventsDividendListItems.length : 4,
                                       itemBuilder: (BuildContext context, int index) {
-                                        return Column(children: [
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Text(EventsDividendController.getEventsDividendListItems[index].coName,
-                                                    style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                Text("${EventsDividendController.getEventsDividendListItems[index].divamt.toStringAsFixed(2)} / share",
-                                                    style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                              ],
+                                        return InkWell(
+                                          onTap: () {
+                                            Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                    builder: (context) => ScriptInfo(
+                                                        CommonFunction.getScripDataModel(
+                                                            exch: int.parse(EventsDividendController.getEventsDividendListItems[index].scCode) >= 500000 ? "B" : "N",
+                                                            exchCode: int.parse(EventsDividendController.getEventsDividendListItems[index].scCode.toString())),
+                                                        false)));
+                                          },
+                                          child: Column(children: [
+                                            Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                              child: Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Container(
+                                                    width: MediaQuery.of(context).size.width * 0.3,
+                                                    child: Text(EventsDividendController.getEventsDividendListItems[index].coName,
+                                                        style: Utils.fonts(
+                                                          fontWeight: FontWeight.w500,
+                                                          size: 14.0,
+                                                        )),
+                                                  ),
+                                                  Container(
+                                                    width: MediaQuery.of(context).size.width * 0.3,
+                                                    child: Text(
+                                                        "${EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[2]} ${EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[1] == "01" ? "Jan ," : EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[1] == "02" ? "Feb ," : EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[1] == "03" ? "Mar ," : EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[1] == "04" ? "Apr ," : EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[1] == "05" ? "May ," : EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[1] == "06" ? "Jun ," : EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[1] == "07" ? "Jul ," : EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[1] == "08" ? "Aug ," : EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[1] == "09" ? "Sep ," : EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[1] == "10" ? "Oct ," : EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[1] == "11" ? "Nov ," : "Dec ,"} ${EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[0]}",
+                                                        textAlign: TextAlign.end,
+                                                        style: Utils.fonts(
+                                                          fontWeight: FontWeight.w400,
+                                                          size: 14.0,
+                                                        )),
+                                                  ),
+                                                  Container(
+                                                    width: MediaQuery.of(context).size.width * 0.3,
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                                      children: [
+                                                        Text("${EventsDividendController.getEventsDividendListItems[index].divamt.toStringAsFixed(2)}",
+                                                            style: Utils.fonts(
+                                                              fontWeight: FontWeight.w400,
+                                                              size: 14.0,
+                                                            )),
+                                                        Text("/ share",
+                                                            style: Utils.fonts(
+                                                              fontWeight: FontWeight.w500,
+                                                              size: 14.0,
+                                                            )),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                          SizedBox(
-                                            height: 10,
-                                          ),
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text("Ex Date", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.grey)),
-                                                    Text(EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0],
-                                                        style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                  ],
-                                                ),
-                                                Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                                  children: [
-                                                    Text("Record Date", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.grey)),
-                                                    Text(EventsDividendController.getEventsDividendListItems[index].tradeDate.toString().split(" ")[0],
-                                                        style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                  ],
-                                                ),
-                                                Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                                  children: [
-                                                    Text("Div yield", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.grey)),
-                                                    Text("-", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                  ],
-                                                ),
-                                              ],
+                                            SizedBox(
+                                              height: 10,
                                             ),
-                                          ),
-                                          Divider(
-                                            thickness: 2,
-                                            color: Colors.grey[350],
-                                          ),
-                                        ]);
+                                            Divider(
+                                              thickness: 2,
+                                              color: Colors.grey[350],
+                                            ),
+                                          ]),
+                                        );
                                       },
                                     )
                                   ],
                                 )
                       : eventsTab == 2
                           ? EventsBonusController.isLoading.value
-                              ? Center(child: CircularProgressIndicator())
+                              ? Container(height: MediaQuery.of(context).size.height * 0.45, child: Center(child: CircularProgressIndicator()))
                               : EventsBonusController.getEventsBonusListItems.isEmpty
                                   ? Center(child: Text("No Data available"))
                                   : Column(
                                       children: [
+                                        Row(children: [
+                                          Container(
+                                            width: MediaQuery.of(context).size.width * 0.3,
+                                            child: Text("Symbol", style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
+                                          ),
+                                          Container(
+                                            width: MediaQuery.of(context).size.width * 0.3,
+                                            child: Text("Ex-Date", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
+                                          ),
+                                          Container(
+                                            width: MediaQuery.of(context).size.width * 0.3,
+                                            child: Text("Bonus", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
+                                          ),
+                                        ]),
+                                        Divider(thickness: 1),
                                         ListView.builder(
                                           shrinkWrap: true,
                                           physics: NeverScrollableScrollPhysics(),
-                                          itemCount: eventsExpanded
-                                              ? EventsBonusController.getEventsBonusListItems.length
-                                              : EventsBonusController.getEventsBonusListItems.length < 4
-                                                  ? EventsBonusController.getEventsBonusListItems.length
-                                                  : 4,
+                                          itemCount: EventsBonusController.getEventsBonusListItems.length <= 4 ? EventsBonusController.getEventsBonusListItems.length : 4,
                                           itemBuilder: (BuildContext context, int index) {
                                             return Column(children: [
-                                              Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                                child: Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Text(EventsBonusController.getEventsBonusListItems[index].symbol, style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                    Text(EventsBonusController.getEventsBonusListItems[index].bonusRatio,
-                                                        style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                  ],
+                                              // Padding(
+                                              //   padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                              //   child: Row(
+                                              //     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              //     children: [
+                                              //       Container(
+                                              //           width: MediaQuery.of(context).size.width * 0.3,
+                                              //           child: Text(EventsBonusController.getEventsBonusListItems[index].symbol,
+                                              //               style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, ))),
+                                              //       Container(
+                                              //         width: MediaQuery.of(context).size.width * 0.3,
+                                              //         child: Text(EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0],
+                                              //             style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
+                                              //       ),
+                                              //       Container(
+                                              //         width: MediaQuery.of(context).size.width * 0.3,
+                                              //         child: Text(EventsBonusController.getEventsBonusListItems[index].bonusRatio,
+                                              //             style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
+                                              //       ),
+                                              //     ],
+                                              //   ),
+                                              // ),
+                                              InkWell(
+                                                onTap: () {
+                                                  Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                          builder: (context) => ScriptInfo(
+                                                              CommonFunction.getScripDataModel(
+                                                                  exch: int.parse(EventsBonusController.getEventsBonusListItems[index].scCode) >= 500000 ? "B" : "N",
+                                                                  exchCode: int.parse(EventsBonusController.getEventsBonusListItems[index].scCode.toString())),
+                                                              false)));
+                                                },
+                                                child: Padding(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 10.0),
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      Container(
+                                                        width: MediaQuery.of(context).size.width * 0.3,
+                                                        child: Text(EventsBonusController.getEventsBonusListItems[index].coName,
+                                                            style: Utils.fonts(
+                                                              fontWeight: FontWeight.w400,
+                                                              size: 14.0,
+                                                            )),
+                                                      ),
+                                                      Container(
+                                                        width: MediaQuery.of(context).size.width * 0.3,
+                                                        child: Text(
+                                                            "${EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0].split("-")[2]} ${EventsDividendController.getEventsDividendListItems[index].divDate.toString().split(" ")[0].split("-")[1] == "01" ? "Jan ," : EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0].split("-")[1] == "02" ? "Feb ," : EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0].split("-")[1] == "03" ? "Mar ," : EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0].split("-")[1] == "04" ? "Apr ," : EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0].split("-")[1] == "05" ? "May ," : EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0].split("-")[1] == "06" ? "Jun ," : EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0].split("-")[1] == "07" ? "Jul ," : EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0].split("-")[1] == "08" ? "Aug ," : EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0].split("-")[1] == "09" ? "Sep ," : EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0].split("-")[1] == "10" ? "Oct ," : EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0].split("-")[1] == "11" ? "Nov ," : "Dec ,"} ${EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0].split("-")[0]}",
+                                                            textAlign: TextAlign.end,
+                                                            style: Utils.fonts(
+                                                              fontWeight: FontWeight.w400,
+                                                              size: 14.0,
+                                                            )),
+                                                      ),
+                                                      Container(
+                                                        width: MediaQuery.of(context).size.width * 0.3,
+                                                        child: Column(
+                                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                                          children: [
+                                                            Text("${EventsBonusController.getEventsBonusListItems[index].bonusRatio}",
+                                                                style: Utils.fonts(
+                                                                  fontWeight: FontWeight.w400,
+                                                                  size: 14.0,
+                                                                )),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
                                               ),
-                                              SizedBox(
-                                                height: 10,
-                                              ),
-                                              Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                                child: Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        Text("Announcement Date", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.grey)),
-                                                        Text(EventsBonusController.getEventsBonusListItems[index].announcementDate.toString().split(" ")[0],
-                                                            style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                      ],
-                                                    ),
-                                                    Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                                      children: [
-                                                        Text("Ex Bonus", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.grey)),
-                                                        Text(EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0],
-                                                            style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
+                                              // SizedBox(
+                                              //   height: 10,
+                                              // ),
+                                              // Padding(
+                                              //   padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                              //   child: Row(
+                                              //     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              //     children: [
+                                              //       Column(
+                                              //         crossAxisAlignment: CrossAxisAlignment.start,
+                                              //         children: [
+                                              //           Text("Announcement Date", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.grey)),
+                                              //           Text(EventsBonusController.getEventsBonusListItems[index].announcementDate.toString().split(" ")[0],
+                                              //               style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
+                                              //         ],
+                                              //       ),
+                                              //       Column(
+                                              //         crossAxisAlignment: CrossAxisAlignment.end,
+                                              //         children: [
+                                              //           Text("Ex Bonus", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.grey)),
+                                              //           Text(EventsBonusController.getEventsBonusListItems[index].bonusDate.toString().split(" ")[0],
+                                              //               style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
+                                              //         ],
+                                              //       ),
+                                              //     ],
+                                              //   ),
+                                              // ),
                                               Divider(
                                                 thickness: 2,
                                                 color: Colors.grey[350],
@@ -9392,147 +10125,167 @@ class HomeWidgets {
                                     )
                           : eventsTab == 3
                               ? EventsRightsController.isLoading.value
-                                  ? Center(child: CircularProgressIndicator())
+                                  ? Container(height: MediaQuery.of(context).size.height * 0.45, child: Center(child: CircularProgressIndicator()))
                                   : EventsBonusController.getEventsBonusListItems.isEmpty
                                       ? Center(child: Text("No Data available"))
-                                      : ListView.builder(
-                                          shrinkWrap: true,
-                                          physics: NeverScrollableScrollPhysics(),
-                                          itemCount: eventsExpanded
-                                              ? EventsRightsController.getEventsRightsListItems.length
-                                              : EventsRightsController.getEventsRightsListItems.length < 4
-                                                  ? EventsRightsController.getEventsRightsListItems.length
-                                                  : 4,
-                                          itemBuilder: (BuildContext context, int index) {
-                                            return Column(children: [
-                                              Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                                child: Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Text(EventsBonusController.getEventsBonusListItems[index].symbol, style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                    Text(EventsBonusController.getEventsBonusListItems[index].bonusRatio,
-                                                        style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                  ],
-                                                ),
+                                      : Column(
+                                          children: [
+                                            Row(children: [
+                                              Container(
+                                                width: MediaQuery.of(context).size.width * 0.3,
+                                                child: Text("Symbol", style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
                                               ),
-                                              SizedBox(
-                                                height: 10,
+                                              Container(
+                                                width: MediaQuery.of(context).size.width * 0.3,
+                                                child: Text("Ex-Date", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
                                               ),
-                                              Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                                child: Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        Text("Ex-Right", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.grey)),
-                                                        Text(EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0],
-                                                            style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                      ],
+                                              Container(
+                                                width: MediaQuery.of(context).size.width * 0.3,
+                                                child: Text("Rights", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
+                                              ),
+                                            ]),
+                                            Divider(thickness: 1),
+                                            ListView.builder(
+                                              shrinkWrap: true,
+                                              physics: NeverScrollableScrollPhysics(),
+                                              itemCount: EventsRightsController.getEventsRightsListItems.length >= 4 ? 4 : EventsRightsController.getEventsRightsListItems.length,
+                                              itemBuilder: (BuildContext context, int index) {
+                                                return Column(children: [
+                                                  InkWell(
+                                                    onTap: () {
+                                                      // Navigator.push(context, MaterialPageRoute(
+                                                      //     builder: (context) => ScriptInfo(
+                                                      //         CommonFunction.getScripDataModel(
+                                                      //             exch: int.parse(EventsRightsController.getEventsRightsListItems[index].) >= 500000 ? "B" : "N",
+                                                      //             exchCode: int.parse(EventsRightsController.getEventsRightsListItems[index].scCode.toString()
+                                                      //             )))));
+                                                    },
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                                      child: Row(
+                                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                        children: [
+                                                          Container(
+                                                            width: MediaQuery.of(context).size.width * 0.3,
+                                                            child: Text(EventsRightsController.getEventsRightsListItems[index].symbol,
+                                                                style: Utils.fonts(
+                                                                  fontWeight: FontWeight.w500,
+                                                                  size: 14.0,
+                                                                )),
+                                                          ),
+                                                          Container(
+                                                            width: MediaQuery.of(context).size.width * 0.3,
+                                                            child: Text(
+                                                                "${EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[2]} ${EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[1] == "01" ? "Jan ," : EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[1] == "02" ? "Feb ," : EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[1] == "03" ? "Mar ," : EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[1] == "04" ? "Apr ," : EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[1] == "05" ? "May ," : EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[1] == "06" ? "Jun ," : EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[1] == "07" ? "Jul ," : EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[1] == "08" ? "Aug ," : EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[1] == "09" ? "Sep ," : EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[1] == "10" ? "Oct ," : EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[1] == "11" ? "Nov ," : "Dec ,"} ${EventsRightsController.getEventsRightsListItems[index].rightDate.toString().split(" ")[0].split("-")[0]}",
+                                                                textAlign: TextAlign.end,
+                                                                style: Utils.fonts(
+                                                                  fontWeight: FontWeight.w500,
+                                                                  size: 14.0,
+                                                                )),
+                                                          ),
+                                                          Container(
+                                                            width: MediaQuery.of(context).size.width * 0.3,
+                                                            child: Column(
+                                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                                              children: [
+                                                                Text("${EventsRightsController.getEventsRightsListItems[index].rightsRatio}",
+                                                                    style: Utils.fonts(
+                                                                      fontWeight: FontWeight.w500,
+                                                                      size: 14.0,
+                                                                    )),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
                                                     ),
-                                                    Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        Text("Premium", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.grey)),
-                                                        Text(EventsRightsController.getEventsRightsListItems[index].premium.toString(),
-                                                            style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              Divider(
-                                                thickness: 2,
-                                                color: Colors.grey[350],
-                                              ),
-                                            ]);
-                                          },
+                                                  ),
+                                                  Divider(
+                                                    thickness: 2,
+                                                    color: Colors.grey[350],
+                                                  ),
+                                                ]);
+                                              },
+                                            ),
+                                          ],
                                         )
                               : eventsTab == 4
                                   ? EventsSplitsController.isLoading.value
-                                      ? Center(child: CircularProgressIndicator())
+                                      ? Container(height: MediaQuery.of(context).size.height * 0.45, child: Center(child: CircularProgressIndicator()))
                                       : EventsSplitsController.getEventsSplitsListItems.isEmpty
                                           ? Center(child: Text("No Data available"))
                                           : Column(
                                               children: [
-                                                Row(
-                                                  children: [
-                                                    Text(
-                                                      "Symbol",
-                                                      style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
-                                                    ),
-                                                    Spacer(),
-                                                    Text(
-                                                      "Ex-Date",
-                                                      style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
-                                                    ),
-                                                    Spacer(),
-                                                    Text(
-                                                      "Dividend",
-                                                      style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
-                                                    ),
-                                                  ],
-                                                ),
-                                                SizedBox(height: 10),
+                                                Row(children: [
+                                                  Container(
+                                                    width: MediaQuery.of(context).size.width * 0.3,
+                                                    child: Text("Symbol", style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
+                                                  ),
+                                                  Container(
+                                                    width: MediaQuery.of(context).size.width * 0.3,
+                                                    child: Text("Ex-Date", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
+                                                  ),
+                                                  Container(
+                                                    width: MediaQuery.of(context).size.width * 0.3,
+                                                    child: Text("Splits", textAlign: TextAlign.end, style: Utils.fonts(size: 15.0, color: Utils.greyColor, fontWeight: FontWeight.w500)),
+                                                  ),
+                                                ]),
                                                 Divider(thickness: 1),
                                                 ListView.builder(
                                                   shrinkWrap: true,
                                                   physics: NeverScrollableScrollPhysics(),
-                                                  itemCount: eventsExpanded
-                                                      ? EventsSplitsController.getEventsSplitsListItems.length
-                                                      : EventsSplitsController.getEventsSplitsListItems.length < 4
-                                                          ? EventsSplitsController.getEventsSplitsListItems.length
-                                                          : 4,
+                                                  itemCount: EventsSplitsController.getEventsSplitsListItems.length <= 4 ? EventsSplitsController.getEventsSplitsListItems.length : 4,
                                                   itemBuilder: (BuildContext context, int index) {
                                                     return Column(children: [
-                                                      Padding(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                                        child: Row(
-                                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                          children: [
-                                                            Text(EventsSplitsController.getEventsSplitsListItems[index].coName,
-                                                                style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                            Text(
-                                                                "${EventsSplitsController.getEventsSplitsListItems[index].fvFrom.toString().split(".")[0]} : ${EventsSplitsController.getEventsSplitsListItems[index].fvTo.toString().split(".")[0]}",
-                                                                style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                      SizedBox(
-                                                        height: 10,
-                                                      ),
-                                                      Padding(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                                        child: Row(
-                                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                          children: [
-                                                            Column(
-                                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                                              children: [
-                                                                Text("Ex-Split", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.grey)),
-                                                                Text(EventsSplitsController.getEventsSplitsListItems[index].tradeDate.toString().split(" ")[0],
-                                                                    style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                              ],
-                                                            ),
-                                                            Column(
-                                                              crossAxisAlignment: CrossAxisAlignment.center,
-                                                              children: [
-                                                                Text("Old FV", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.grey)),
-                                                                Text(EventsSplitsController.getEventsSplitsListItems[index].fvFrom.toString(),
-                                                                    style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                              ],
-                                                            ),
-                                                            Column(
-                                                              crossAxisAlignment: CrossAxisAlignment.end,
-                                                              children: [
-                                                                Text("New FV", style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.grey)),
-                                                                Text(EventsSplitsController.getEventsSplitsListItems[index].fvTo.toString(),
-                                                                    style: Utils.fonts(fontWeight: FontWeight.w500, size: 14.0, color: Colors.black)),
-                                                              ],
-                                                            ),
-                                                          ],
+                                                      InkWell(
+                                                        onTap: () {
+                                                          Navigator.push(
+                                                              context,
+                                                              MaterialPageRoute(
+                                                                  builder: (context) => ScriptInfo(
+                                                                      CommonFunction.getScripDataModel(
+                                                                          exch: int.parse(EventsSplitsController.getEventsSplitsListItems[index].scCode) >= 500000 ? "B" : "N",
+                                                                          exchCode: int.parse(EventsSplitsController.getEventsSplitsListItems[index].scCode.toString())),
+                                                                      false)));
+                                                        },
+                                                        child: Padding(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 10.0),
+                                                          child: Row(
+                                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                            children: [
+                                                              Container(
+                                                                width: MediaQuery.of(context).size.width * 0.3,
+                                                                child: Text(EventsSplitsController.getEventsSplitsListItems[index].coName,
+                                                                    style: Utils.fonts(
+                                                                      fontWeight: FontWeight.w500,
+                                                                      size: 14.0,
+                                                                    )),
+                                                              ),
+                                                              Container(
+                                                                width: MediaQuery.of(context).size.width * 0.3,
+                                                                child: Text(
+                                                                    "${EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[2]} ${EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[1] == "01" ? "Jan ," : EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[1] == "02" ? "Feb ," : EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[1] == "03" ? "Mar ," : EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[1] == "04" ? "Apr ," : EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[1] == "05" ? "May ," : EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[1] == "06" ? "Jun ," : EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[1] == "07" ? "Jul ," : EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[1] == "08" ? "Aug ," : EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[1] == "09" ? "Sep ," : EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[1] == "10" ? "Oct ," : EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[1] == "11" ? "Nov ," : "Dec ,"} ${EventsSplitsController.getEventsSplitsListItems[index].splitDate.toString().split(" ")[0].split("-")[0]}",
+                                                                    textAlign: TextAlign.end,
+                                                                    style: Utils.fonts(
+                                                                      fontWeight: FontWeight.w500,
+                                                                      size: 14.0,
+                                                                    )),
+                                                              ),
+                                                              Container(
+                                                                width: MediaQuery.of(context).size.width * 0.3,
+                                                                child: Column(
+                                                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                                                  children: [
+                                                                    Text(" ",
+                                                                        style: Utils.fonts(
+                                                                          fontWeight: FontWeight.w500,
+                                                                          size: 14.0,
+                                                                        )),
+                                                                  ],
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
                                                         ),
                                                       ),
                                                       Divider(
@@ -9569,18 +10322,27 @@ class HomeWidgets {
               children: [
                 InkWell(
                   onTap: () {
-                    if (topLosersExpanded == false) {
-                      topLosersExpanded = true;
-                    } else if (topLosersExpanded == true) {
-                      topLosersExpanded = false;
-                    }
-                    setState(() {});
+                    // if (topLosersExpanded == false) {
+                    //   topLosersExpanded = true;
+                    // } else if (topLosersExpanded == true) {
+                    //   topLosersExpanded = false;
+                    // }
+                    // setState(() {});
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => MarketStatsNext(
+                                  name: "Top Losers",
+                                  currentTabIndex: 1,
+                                )));
                   },
                   child: Row(
                     children: [
                       Text(
                         "Top Losers",
-                        style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+                        style: Utils.fonts(
+                          size: 17.0,
+                        ),
                       ),
                       SizedBox(
                         width: 10,
@@ -9609,7 +10371,7 @@ class HomeWidgets {
                           InkWell(
                             onTap: () {
                               topLosersTab = 2;
-                              Dataconstants.topLosersController.getTopLosers("day");
+                              Dataconstants.topLosersController.getTopLosers("nse", "nifty", "day");
                               setState(() {});
                             },
                             child: Container(
@@ -9643,7 +10405,7 @@ class HomeWidgets {
                           InkWell(
                             onTap: () {
                               topLosersTab = 3;
-                              Dataconstants.topLosersController.getTopLosers("week");
+                              Dataconstants.topLosersController.getTopLosers("nse", "nifty", "week");
                               setState(() {});
                             },
                             child: Container(
@@ -9677,7 +10439,7 @@ class HomeWidgets {
                           InkWell(
                             onTap: () {
                               topLosersTab = 1;
-                              Dataconstants.topLosersController.getTopLosers("month");
+                              Dataconstants.topLosersController.getTopLosers("nse", "nifty", "month");
                               setState(() {});
                             },
                             child: Container(
@@ -9763,10 +10525,13 @@ class HomeWidgets {
                       )
                     : Obx(() {
                         return TopLosersController.isLoading.value
-                            ? Align(
-                                alignment: Alignment.center,
-                                child: Center(
-                                  child: CircularProgressIndicator(),
+                            ? Container(
+                                height: MediaQuery.of(context).size.height * 0.45,
+                                child: Align(
+                                  alignment: Alignment.center,
+                                  child: Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
                                 ),
                               )
                             : TopLosersController.getTopLosersListItems.length > 0
@@ -9775,51 +10540,73 @@ class HomeWidgets {
                                     child: ListView.builder(
                                       shrinkWrap: true,
                                       physics: NeverScrollableScrollPhysics(),
-                                      itemCount: topLosersExpanded
-                                          ? TopLosersController.getTopLosersListItems.length
-                                          : TopLosersController.getTopLosersListItems.length < 4
-                                              ? TopLosersController.getTopLosersListItems
-                                              : 4,
+                                      itemCount: TopLosersController.getTopLosersListItems.length < 4 ? TopLosersController.getTopLosersListItems.length : 4,
                                       itemBuilder: (BuildContext context, int index) {
                                         return Column(
                                           children: [
-                                            Padding(
-                                              padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                              child: Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  Expanded(
-                                                    flex: 2,
-                                                    child: Text(
-                                                      TopLosersController.getTopLosersListItems[index].symbol,
-                                                      style: Utils.fonts(fontWeight: FontWeight.w500),
-                                                    ),
-                                                  ),
-                                                  Expanded(
-                                                    flex: 1,
-                                                    child: Text(
-                                                      "${TopLosersController.getTopLosersListItems[index].perchg.toStringAsFixed(2)} %",
-                                                      style: Utils.fonts(
-                                                        color: Utils.greyColor,
+                                            InkWell(
+                                              onTap: () {
+                                                Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                        builder: (context) => ScriptInfo(
+                                                            CommonFunction.getScripDataModel(
+                                                                exch: int.parse(TopLosersController.getTopLosersListItems[index].scCode) >= 500000 ? "B" : "N",
+                                                                exchCode: int.parse(TopLosersController.getTopLosersListItems[index].scCode.toString())),
+                                                            false)));
+                                              },
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                                child: Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Expanded(
+                                                      flex: 2,
+                                                      child: Text(
+                                                        TopLosersController.getTopLosersListItems[index].symbol,
+                                                        style: Utils.fonts(fontWeight: FontWeight.w500),
                                                       ),
                                                     ),
-                                                  ),
-                                                  Expanded(
-                                                    flex: 1,
-                                                    child: Row(
-                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                      children: [
-                                                        SizedBox(),
-                                                        Text(
-                                                          TopLosersController.getTopLosersListItems[index].prevClose.toString(),
-                                                          style: Utils.fonts(
-                                                            color: Utils.lightRedColor,
+                                                    Expanded(
+                                                      flex: 1,
+                                                      child: Row(
+                                                        children: [
+                                                          Padding(
+                                                            padding: const EdgeInsets.only(right: 8.0),
+                                                            child: RotatedBox(
+                                                              quarterTurns: 2,
+                                                              child: SvgPicture.asset(
+                                                                "assets/appImages/inverted_rectangle.svg",
+                                                                color: Utils.lightRedColor,
+                                                              ),
+                                                            ),
                                                           ),
-                                                        ),
-                                                      ],
+                                                          Text(
+                                                            "${TopLosersController.getTopLosersListItems[index].perchg.toStringAsFixed(2)} %",
+                                                            style: Utils.fonts(
+                                                              color: Utils.lightRedColor,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
                                                     ),
-                                                  )
-                                                ],
+                                                    Expanded(
+                                                      flex: 1,
+                                                      child: Row(
+                                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                        children: [
+                                                          SizedBox(),
+                                                          Text(
+                                                            TopLosersController.getTopLosersListItems[index].prevClose.toString(),
+                                                            style: Utils.fonts(
+                                                              color: Utils.greyColor,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    )
+                                                  ],
+                                                ),
                                               ),
                                             ),
                                             Divider(
@@ -9865,18 +10652,27 @@ class HomeWidgets {
                 children: [
                   InkWell(
                     onTap: () {
-                      if (mostActiveExpanded == false) {
-                        mostActiveExpanded = true;
-                      } else if (mostActiveExpanded == true) {
-                        mostActiveExpanded = false;
-                      }
-                      setState(() {});
+                      // if (mostActiveExpanded == false) {
+                      //   mostActiveExpanded = true;
+                      // } else if (mostActiveExpanded == true) {
+                      //   mostActiveExpanded = false;
+                      // }
+                      // setState(() {});
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => MarketStatsNext(
+                                    name: "Most Active",
+                                    currentTabIndex: 2,
+                                  )));
                     },
                     child: Row(
                       children: [
                         Text(
                           "Most Active",
-                          style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+                          style: Utils.fonts(
+                            size: 17.0,
+                          ),
                         ),
                         SizedBox(
                           width: 10,
@@ -10103,386 +10899,442 @@ class HomeWidgets {
                   ),
                   (() {
                     if (mostActiveTab == 1)
-                      return MostActiveVolumeController.getMostActiveVolumeListItems.length > 0
-                          ? ListView.builder(
-                              shrinkWrap: true,
-                              physics: NeverScrollableScrollPhysics(),
-                              itemCount: mostActiveExpanded
-                                  ? MostActiveVolumeController.getMostActiveVolumeListItems.length < 4
-                                      ? MostActiveVolumeController.getMostActiveVolumeListItems.length
-                                      : 4
-                                  : MostActiveVolumeController.getMostActiveVolumeListItems.length,
-                              itemBuilder: (BuildContext context, int index) {
-                                return Column(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              MostActiveVolumeController.getMostActiveVolumeListItems[index].symbol.toString(),
-                                              style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                                            ),
-                                          ),
-                                          Container(
-                                            child: Expanded(
-                                              child: Row(
-                                                mainAxisAlignment: MainAxisAlignment.center,
-                                                children: [
-                                                  Text(
-                                                    MostActiveVolumeController.getMostActiveVolumeListItems[index].volTraded.toStringAsFixed(2),
-                                                    style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                          Expanded(
+                      return MostActiveVolumeController.isLoading.value
+                          ? Container(height: MediaQuery.of(context).size.height * 0.45, child: Center(child: CircularProgressIndicator()))
+                          : MostActiveVolumeController.getMostActiveVolumeListItems.length > 0
+                              ? ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: NeverScrollableScrollPhysics(),
+                                  itemCount: MostActiveVolumeController.getMostActiveVolumeListItems.length >= 4 ? 4 : MostActiveVolumeController.getMostActiveVolumeListItems.length,
+                                  itemBuilder: (BuildContext context, int index) {
+                                    return Column(
+                                      children: [
+                                        InkWell(
+                                          onTap: () {
+                                            Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                    builder: (context) => ScriptInfo(
+                                                        CommonFunction.getScripDataModel(
+                                                            exch: int.parse(MostActiveVolumeController.getMostActiveVolumeListItems[index].scCode) >= 500000 ? "B" : "N",
+                                                            exchCode: int.parse(MostActiveVolumeController.getMostActiveVolumeListItems[index].scCode.toString())),
+                                                        false)));
+                                          },
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 8.0),
                                             child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.end,
                                               children: [
-                                                Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                                  children: [
-                                                    Text(
-                                                      MostActiveVolumeController.getMostActiveVolumeListItems[index].closePrice.toString(),
-                                                      style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                                                    ),
-                                                    Text(
-                                                      MostActiveVolumeController.getMostActiveVolumeListItems[index].perchg.toStringAsFixed(2),
-                                                      style: Utils.fonts(
-                                                          size: 14.0,
-                                                          color: MostActiveVolumeController.getMostActiveVolumeListItems[index].perchg > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
-                                                          fontWeight: FontWeight.w500),
-                                                    ),
-                                                  ],
+                                                Expanded(
+                                                  child: Text(
+                                                    MostActiveVolumeController.getMostActiveVolumeListItems[index].symbol.toString(),
+                                                    style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                  ),
                                                 ),
+                                                Container(
+                                                  child: Expanded(
+                                                    child: Row(
+                                                      mainAxisAlignment: MainAxisAlignment.center,
+                                                      children: [
+                                                        Text(
+                                                          "${(MostActiveVolumeController.getMostActiveVolumeListItems[index].volTraded / 10000000).toStringAsFixed(2)} Cr.",
+                                                          style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                    children: [
+                                                      Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                                        children: [
+                                                          Text(
+                                                            MostActiveVolumeController.getMostActiveVolumeListItems[index].closePrice.toString(),
+                                                            style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                          ),
+                                                          Row(
+                                                            children: [
+                                                              Padding(
+                                                                padding: const EdgeInsets.only(right: 8.0),
+                                                                child: RotatedBox(
+                                                                  quarterTurns: MostActiveVolumeController.getMostActiveVolumeListItems[index].perchg > 0 ? 4 : 2,
+                                                                  child: SvgPicture.asset(
+                                                                    "assets/appImages/inverted_rectangle.svg",
+                                                                    color: MostActiveVolumeController.getMostActiveVolumeListItems[index].perchg > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                              Text(
+                                                                "${MostActiveVolumeController.getMostActiveVolumeListItems[index].perchg.toStringAsFixed(2)} %",
+                                                                style: Utils.fonts(
+                                                                    size: 14.0,
+                                                                    color: MostActiveVolumeController.getMostActiveVolumeListItems[index].perchg > 0 ? Utils.lightGreenColor : Utils.lightRedColor,
+                                                                    fontWeight: FontWeight.w500),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  ),
+                                                )
                                               ],
                                             ),
-                                          )
-                                        ],
+                                          ),
+                                        ),
+                                        Divider(
+                                          thickness: 2,
+                                        )
+                                      ],
+                                    );
+                                  },
+                                )
+                              : Center(
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        "No Data Available",
+                                        style: Utils.fonts(size: 14.0, color: Utils.greyColor),
                                       ),
-                                    ),
-                                    Divider(
-                                      thickness: 2,
-                                    )
-                                  ],
-                                );
-                              },
-                            )
-                          : Center(
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    "No Data Available",
-                                    style: Utils.fonts(size: 14.0, color: Utils.greyColor),
+                                    ],
                                   ),
-                                ],
-                              ),
-                            );
+                                );
 
                     if (mostActiveTab == 2)
-                      return MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems.length > 0
-                          ? ListView.builder(
-                              shrinkWrap: true,
-                              physics: NeverScrollableScrollPhysics(),
-                              itemCount: mostActiveExpanded
-                                  ? MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems.length < 4
-                                      ? MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems.length
-                                      : 4
-                                  : MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems.length,
-                              itemBuilder: (BuildContext context, int index) {
-                                return Column(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].symbol,
-                                              style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                                            ),
-                                          ),
-                                          Expanded(
+                      return MostActiveTurnOverController.isLoading.value
+                          ? Container(height: MediaQuery.of(context).size.height * 0.45, child: Center(child: CircularProgressIndicator()))
+                          : MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems.length > 0
+                              ? ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: NeverScrollableScrollPhysics(),
+                                  itemCount:
+                                      MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems.length >= 4 ? 4 : MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems.length,
+                                  itemBuilder: (BuildContext context, int index) {
+                                    return Column(
+                                      children: [
+                                        InkWell(
+                                          onTap: () {
+                                            Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                    builder: (context) => ScriptInfo(
+                                                        CommonFunction.getScripDataModel(
+                                                            exch: int.parse(MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].scCode) >= 500000 ? "B" : "N",
+                                                            exchCode: int.parse(MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].scCode.toString())),
+                                                        false)));
+                                          },
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 8.0),
                                             child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
                                               children: [
-                                                Text(
-                                                  MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].valTraded.toStringAsFixed(2),
-                                                  style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.end,
-                                              children: [
-                                                Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                                  children: [
-                                                    Text(
-                                                      MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].closePrice.toString(),
-                                                      style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                                                    ),
-                                                    Text(
-                                                      MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].perchg.toStringAsFixed(2),
-                                                      style: Utils.fonts(
-                                                          size: 14.0,
-                                                          color: MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].perchg > 0 ? Utils.lightRedColor : Utils.lightRedColor,
-                                                          fontWeight: FontWeight.w500),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                          )
-                                        ],
-                                      ),
-                                    ),
-                                    Divider(
-                                      thickness: 2,
-                                    )
-                                  ],
-                                );
-                              },
-                            )
-                          : Center(
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    "No Data Available",
-                                    style: Utils.fonts(size: 14.0, color: Utils.greyColor),
-                                  ),
-                                ],
-                              ),
-                            );
-
-                    if (mostActiveTab == 3)
-                      return MostActiveFuturesController.getMostActiveFuturesDetailsListItems.length > 0
-                          ? ListView.builder(
-                              shrinkWrap: true,
-                              physics: NeverScrollableScrollPhysics(),
-                              itemCount: mostActiveExpanded
-                                  ? MostActiveFuturesController.getMostActiveFuturesDetailsListItems.length < 4
-                                      ? MostActiveFuturesController.getMostActiveFuturesDetailsListItems.length
-                                      : 4
-                                  : MostActiveFuturesController.getMostActiveFuturesDetailsListItems.length,
-                              itemBuilder: (BuildContext context, int index) {
-                                return Column(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              MostActiveFuturesController.getMostActiveFuturesDetailsListItems[index].symbol.toString() ?? " ",
-                                              style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  MostActiveFuturesController.getMostActiveFuturesDetailsListItems[index].tradedQty.toStringAsFixed(2) ?? " ",
-                                                  style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.end,
-                                              children: [
-                                                Text(
-                                                  MostActiveFuturesController.getMostActiveFuturesDetailsListItems[index].turnOver.toStringAsFixed(2) ?? " ",
-                                                  style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                                                ),
-                                              ],
-                                            ),
-                                          )
-                                        ],
-                                      ),
-                                    ),
-                                    Divider(
-                                      thickness: 2,
-                                    )
-                                  ],
-                                );
-                              },
-                            )
-                          : Center(
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    "No Data Available",
-                                    style: Utils.fonts(size: 14.0, color: Utils.greyColor),
-                                  ),
-                                ],
-                              ),
-                            );
-
-                    if (mostActiveTab == 4)
-                      return MostActiveCallController.getMostActiveCallDetailsListItems.length > 0
-                          ? ListView.builder(
-                              shrinkWrap: true,
-                              physics: NeverScrollableScrollPhysics(),
-                              itemCount: mostActiveExpanded
-                                  ? MostActiveCallController.getMostActiveCallDetailsListItems.length < 4
-                                      ? MostActiveCallController.getMostActiveCallDetailsListItems.length
-                                      : 4
-                                  : MostActiveCallController.getMostActiveCallDetailsListItems.length,
-                              itemBuilder: (BuildContext context, int index) {
-                                return Column(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  MostActiveCallController.getMostActiveCallDetailsListItems[index].symbol.name,
-                                                  style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w700),
-                                                ),
-                                                Text(
-                                                  MostActiveCallController.getMostActiveCallDetailsListItems[index].strikePrice,
-                                                  style: Utils.fonts(
-                                                    size: 12.0,
-                                                    color: Utils.greyColor,
+                                                Expanded(
+                                                  child: Text(
+                                                    MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].symbol,
+                                                    style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
                                                   ),
                                                 ),
+                                                Expanded(
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    children: [
+                                                      Text(
+                                                        "${(MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].volTraded / 10000000).toStringAsFixed(2)} Cr",
+                                                        style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                    children: [
+                                                      Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                                        children: [
+                                                          Text(
+                                                            MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].closePrice.toString(),
+                                                            style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                          ),
+                                                          Row(
+                                                            children: [
+                                                              Padding(
+                                                                padding: const EdgeInsets.only(right: 8.0),
+                                                                child: RotatedBox(
+                                                                  quarterTurns: MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].perchg > 0 ? 4 : 2,
+                                                                  child: SvgPicture.asset(
+                                                                    "assets/appImages/markets/inverted_rectangle.svg",
+                                                                    color: MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].perchg > 0
+                                                                        ? Utils.lightGreenColor
+                                                                        : Utils.lightRedColor,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                              Text(
+                                                                MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].perchg.toStringAsFixed(2),
+                                                                style: Utils.fonts(
+                                                                    size: 14.0,
+                                                                    color: MostActiveTurnOverController.getMostActiveTurnOverDetailsListItems[index].perchg > 0
+                                                                        ? Utils.lightRedColor
+                                                                        : Utils.lightRedColor,
+                                                                    fontWeight: FontWeight.w500),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  ),
+                                                )
                                               ],
                                             ),
                                           ),
-                                          Expanded(
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  MostActiveCallController.getMostActiveCallDetailsListItems[index].tradedQty,
-                                                  style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.end,
-                                              children: [
-                                                Text(
-                                                  (double.parse(MostActiveCallController.getMostActiveCallDetailsListItems[index].turnOver) / 10000000).toStringAsFixed(2),
-                                                  style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                                                ),
-                                              ],
-                                            ),
-                                          )
-                                        ],
+                                        ),
+                                        Divider(
+                                          thickness: 2,
+                                        )
+                                      ],
+                                    );
+                                  },
+                                )
+                              : Center(
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        "No Data Available",
+                                        style: Utils.fonts(size: 14.0, color: Utils.greyColor),
                                       ),
-                                    ),
-                                    Divider(
-                                      thickness: 2,
-                                    )
-                                  ],
-                                );
-                              },
-                            )
-                          : Center(
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    "No Data Available",
-                                    style: Utils.fonts(size: 14.0, color: Utils.greyColor),
+                                    ],
                                   ),
-                                ],
-                              ),
-                            );
+                                );
+
+                    if (mostActiveTab == 3)
+                      return MostActiveFuturesController.isLoading.value
+                          ? Container(height: MediaQuery.of(context).size.height * 0.45, child: Center(child: CircularProgressIndicator()))
+                          : MostActiveFuturesController.getMostActiveFuturesDetailsListItems.length > 0
+                              ? ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: NeverScrollableScrollPhysics(),
+                                  itemCount: MostActiveFuturesController.getMostActiveFuturesDetailsListItems.length >= 4 ? 4 : MostActiveFuturesController.getMostActiveFuturesDetailsListItems.length,
+                                  itemBuilder: (BuildContext context, int index) {
+                                    return Column(
+                                      children: [
+                                        InkWell(
+                                          onTap: () {},
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 20.0),
+                                            child: Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    MostActiveFuturesController.getMostActiveFuturesDetailsListItems[index].symbol.toString() ?? " ",
+                                                    style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    children: [
+                                                      Text(
+                                                        "${MostActiveFuturesController.getMostActiveFuturesDetailsListItems[index].tradedQty}" ?? " ",
+                                                        style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                    children: [
+                                                      Text(
+                                                        "${(MostActiveFuturesController.getMostActiveFuturesDetailsListItems[index].turnOver / 10000000).toStringAsFixed(2)} Cr." ?? " ",
+                                                        style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                )
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        Divider(
+                                          thickness: 2,
+                                        )
+                                      ],
+                                    );
+                                  },
+                                )
+                              : Center(
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        "No Data Available",
+                                        style: Utils.fonts(size: 14.0, color: Utils.greyColor),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                    if (mostActiveTab == 4)
+                      return MostActiveCallController.isLoading.value
+                          ? Container(height: MediaQuery.of(context).size.height * 0.45, child: Center(child: CircularProgressIndicator()))
+                          : MostActiveCallController.getMostActiveCallDetailsListItems.length > 0
+                              ? ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: NeverScrollableScrollPhysics(),
+                                  itemCount: MostActiveCallController.getMostActiveCallDetailsListItems.length >= 4 ? 4 : MostActiveCallController.getMostActiveCallDetailsListItems.length,
+                                  itemBuilder: (BuildContext context, int index) {
+                                    return Column(
+                                      children: [
+                                        InkWell(
+                                          onTap: () {},
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                            child: Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        MostActiveCallController.getMostActiveCallDetailsListItems[index].symbol.name,
+                                                        style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w700),
+                                                      ),
+                                                      Text(
+                                                        MostActiveCallController.getMostActiveCallDetailsListItems[index].strikePrice,
+                                                        style: Utils.fonts(
+                                                          size: 12.0,
+                                                          color: Utils.greyColor,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    children: [
+                                                      Text(
+                                                        "${(double.parse(MostActiveCallController.getMostActiveCallDetailsListItems[index].tradedQty)).toString()}",
+                                                        style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                    children: [
+                                                      Text(
+                                                        "${(double.parse(MostActiveCallController.getMostActiveCallDetailsListItems[index].turnOver) / 10000000).toStringAsFixed(2)} Cr",
+                                                        style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                )
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        Divider(
+                                          thickness: 2,
+                                        )
+                                      ],
+                                    );
+                                  },
+                                )
+                              : Center(
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        "No Data Available",
+                                        style: Utils.fonts(size: 14.0, color: Utils.greyColor),
+                                      ),
+                                    ],
+                                  ),
+                                );
 
                     if (mostActiveTab == 5)
-                      return MostActivePutController.getMostActivePutDetailsListItems.length > 0
-                          ? ListView.builder(
-                              shrinkWrap: true,
-                              physics: NeverScrollableScrollPhysics(),
-                              itemCount: mostActiveExpanded
-                                  ? MostActivePutController.getMostActivePutDetailsListItems.length < 4
-                                      ? MostActivePutController.getMostActivePutDetailsListItems.length
-                                      : 4
-                                  : MostActivePutController.getMostActivePutDetailsListItems.length,
-                              itemBuilder: (BuildContext context, int index) {
-                                return Column(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                      return MostActivePutController.isLoading.value
+                          ? Container(height: MediaQuery.of(context).size.height * 0.45, child: Center(child: CircularProgressIndicator()))
+                          : MostActivePutController.getMostActivePutDetailsListItems.length > 0
+                              ? ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: NeverScrollableScrollPhysics(),
+                                  itemCount: MostActivePutController.getMostActivePutDetailsListItems.length >= 4 ? 4 : MostActivePutController.getMostActivePutDetailsListItems.length,
+                                  itemBuilder: (BuildContext context, int index) {
+                                    return Column(
+                                      children: [
+                                        InkWell(
+                                          onTap: () {},
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                            child: Row(
                                               children: [
-                                                Text(
-                                                  MostActivePutController.getMostActivePutDetailsListItems[index].symbol.name ?? null,
-                                                  style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        MostActivePutController.getMostActivePutDetailsListItems[index].symbol.name ?? null,
+                                                        style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                      Text(
+                                                        MostActivePutController.getMostActivePutDetailsListItems[index].strikePrice ?? null,
+                                                        style: Utils.fonts(size: 12.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
-                                                Text(
-                                                  MostActivePutController.getMostActivePutDetailsListItems[index].strikePrice ?? null,
-                                                  style: Utils.fonts(size: 12.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
+                                                Expanded(
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    children: [
+                                                      Text(
+                                                        "${double.parse(MostActivePutController.getMostActivePutDetailsListItems[index].tradedQty)}",
+                                                        style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
+                                                Expanded(
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                    children: [
+                                                      Text(
+                                                        "${(double.parse(MostActivePutController.getMostActivePutDetailsListItems[index].turnOver) / 10000000).toStringAsFixed(2)} Cr",
+                                                        style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                )
                                               ],
                                             ),
                                           ),
-                                          Expanded(
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  MostActivePutController.getMostActivePutDetailsListItems[index].tradedQty,
-                                                  style: Utils.fonts(size: 14.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.end,
-                                              children: [
-                                                Text(
-                                                  (double.parse(MostActivePutController.getMostActivePutDetailsListItems[index].turnOver) / 10000000).toStringAsFixed(2),
-                                                  style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                                                ),
-                                              ],
-                                            ),
-                                          )
-                                        ],
+                                        ),
+                                        Divider(
+                                          thickness: 2,
+                                        )
+                                      ],
+                                    );
+                                  },
+                                )
+                              : Center(
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        "No Data Available",
+                                        style: Utils.fonts(size: 14.0, color: Utils.greyColor),
                                       ),
-                                    ),
-                                    Divider(
-                                      thickness: 2,
-                                    )
-                                  ],
-                                );
-                              },
-                            )
-                          : Center(
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    "No Data Available",
-                                    style: Utils.fonts(size: 14.0, color: Utils.greyColor),
+                                    ],
                                   ),
-                                ],
-                              ),
-                            );
+                                );
                   }())
                 ],
               ),
@@ -10510,7 +11362,9 @@ class HomeWidgets {
                   children: [
                     Text(
                       "IPO",
-                      style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+                      style: Utils.fonts(
+                        size: 17.0,
+                      ),
                     ),
                     SizedBox(
                       width: 10,
@@ -11162,80 +12016,37 @@ class HomeWidgets {
           height: 10,
         ),
         Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Container(
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(5.0), color: Utils.lightyellowColor.withOpacity(0.5)),
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Request a Callback",
-                          style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                        ),
-                        SizedBox(
-                          height: 5,
-                        ),
-                        Text(
-                          "Our team will get back to you lightning fast",
-                          style: Utils.fonts(size: 13.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                        ),
-                        SizedBox(
-                          height: 5,
-                        ),
-                        Container(
-                          decoration: BoxDecoration(color: Utils.primaryColor.withOpacity(0.8), borderRadius: BorderRadius.all(Radius.circular(2.0))),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 5.0),
-                            child: Text(
-                              "Explore",
-                              style: Utils.fonts(size: 12.0, color: Utils.whiteColor),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SvgPicture.asset(
-                    "assets/appImages/dashboard/XMLID_2_.svg",
-                    height: 100,
-                    width: 100,
-                  )
-                ],
-              ),
-            ),
-          ),
-        ),
-        SizedBox(
-          height: 10,
-        ),
-        Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "News",
-                    style: Utils.fonts(size: 17.0, color: Utils.blackColor),
-                  ),
-                  // SizedBox(
-                  //   width: 10,
-                  // ),
-                  InkWell(
-                      onTap: () {
-                        HomeWidgets.scrollTop();
-                      },
-                      child: SvgPicture.asset("assets/appImages/markets/up_arrow.svg"))
-                ],
+              InkWell(
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => NewsPage()));
+                },
+                child: Row(
+                  children: [
+                    Text(
+                      "News",
+                      style: Utils.fonts(
+                        size: 17.0,
+                      ),
+                    ),
+                    // SizedBox(
+                    //   width: 10,
+                    // ),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8.0),
+                      child: InkWell(
+                          onTap: () {
+                            Navigator.push(context, MaterialPageRoute(builder: (context) => NewsPage()));
+                          },
+                          child: SvgPicture.asset("assets/appImages/arrow_right_circle.svg")),
+                    )
+                  ],
+                ),
               ),
               SizedBox(
-                height: 250,
+                height: 300,
                 child: Observer(builder: (context) {
                   return ListView.builder(
                     shrinkWrap: true,
@@ -11256,7 +12067,6 @@ class HomeWidgets {
                                       Dataconstants.todayNews.filteredNews[index].staticModel.name,
                                       style: Utils.fonts(
                                         size: 16.0,
-                                        color: Utils.blackColor,
                                       ),
                                     ),
                                   ),
@@ -11266,7 +12076,7 @@ class HomeWidgets {
                                   ),
                                 Text(
                                   Dataconstants.todayNews.filteredNews[index].description,
-                                  style: Utils.fonts(size: 13.0, color: Utils.blackColor, fontWeight: FontWeight.w400),
+                                  style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w400),
                                 ),
                                 SizedBox(
                                   height: 10,
@@ -11315,6 +12125,7 @@ class HomeWidgets {
                                 MaterialPageRoute(
                                   builder: (context) => ScriptInfo(
                                     tempModel,
+                                    false,
                                   ),
                                 ),
                               );
@@ -11396,7 +12207,9 @@ class HomeWidgets {
                 children: [
                   Text(
                     "Global Indices",
-                    style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+                    style: Utils.fonts(
+                      size: 17.0,
+                    ),
                   ),
                   SizedBox(
                     width: 10,
@@ -11413,9 +12226,9 @@ class HomeWidgets {
             ),
           ),
           if (WorldIndicesController.isLoading.value)
-          Center(
-        child: CircularProgressIndicator(),
-        )
+            Center(
+              child: CircularProgressIndicator(),
+            )
           else
             WorldIndicesController.getWorldIndicesListItems.length <= 0
                 ? Center(
@@ -11453,7 +12266,6 @@ class HomeWidgets {
                                                       WorldIndicesController.getWorldIndicesListItems[i].indexname,
                                                       style: Utils.fonts(
                                                         size: 14.0,
-                                                        color: Utils.blackColor,
                                                         fontWeight: FontWeight.w500,
                                                       ),
                                                     ),
@@ -11539,7 +12351,6 @@ class HomeWidgets {
                                                       WorldIndicesController.getWorldIndicesListItems[i].indexname,
                                                       style: Utils.fonts(
                                                         size: 14.0,
-                                                        color: Utils.blackColor,
                                                         fontWeight: FontWeight.w500,
                                                       ),
                                                     ),
@@ -11623,137 +12434,256 @@ class HomeWidgets {
                   )
         ]);
       });
+
+      // return SfMaps(
+      //   layers: [
+      //     MapShapeLayer(
+      //       delegate: const MapShapeLayerDelegate(
+      //         shapeFile: 'assets/australia.json',
+      //         shapeDataField: 'STATE_NAME',
+      //       ),
+      //     ),
+      //   ],
+      // );
     });
   }
 
   static Widget circuitBreakers(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Text(
-                    "Circuit Breakers",
-                    style: Utils.fonts(size: 17.0, color: Utils.blackColor),
-                  ),
-                  SizedBox(
-                    width: 10,
-                  ),
-                  SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
-                  Spacer(),
-                  InkWell(
-                      onTap: () {
-                        HomeWidgets.scrollTop();
-                      },
-                      child: SvgPicture.asset("assets/appImages/markets/up_arrow.svg"))
-                ],
-              ),
-              SizedBox(
-                height: 20,
-              ),
-              Row(
-                children: [
-                  Container(
-                      decoration: BoxDecoration(
-                        border: Border(
-                            left: BorderSide(
-                              color: Utils.primaryColor,
-                              width: 1,
-                            ),
-                            top: BorderSide(
-                              color: Utils.primaryColor,
-                              width: 1,
-                            ),
-                            bottom: BorderSide(
-                              color: Utils.primaryColor,
-                              width: 1,
-                            ),
-                            right: BorderSide(
-                              color: Utils.primaryColor,
-                              width: 1,
-                            )),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text(
-                          "Upper Circuit",
-                          style: Utils.fonts(size: 12.0, color: Utils.primaryColor, fontWeight: FontWeight.w500),
+    return StatefulBuilder(builder: (BuildContext context, StateSetter setState) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                InkWell(
+                  onTap: () {
+                    // Navigator.push(context, MaterialPageRoute(builder: (context) => CircuitBreakersPage()));
+                  },
+                  child: Row(
+                    children: [
+                      Text(
+                        "Circuit Breakers",
+                        style: Utils.fonts(
+                          size: 17.0,
                         ),
-                      )),
-                  Container(
-                      decoration: BoxDecoration(
-                        border: Border(
-                            top: BorderSide(
-                              color: Utils.greyColor.withOpacity(0.5),
-                              width: 1,
-                            ),
-                            bottom: BorderSide(
-                              color: Utils.greyColor.withOpacity(0.5),
-                              width: 1,
-                            ),
-                            right: BorderSide(
-                              color: Utils.greyColor.withOpacity(0.5),
-                              width: 1,
-                            )),
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text(
-                          "Lower Circuit",
-                          style: Utils.fonts(size: 12.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
-                        ),
-                      ))
-                ],
-              ),
-              SizedBox(
-                height: 10,
-              ),
-              for (var i = 0; i < 4; i++)
-                Column(
+                      SizedBox(
+                        width: 10,
+                      ),
+                      SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
+                      Spacer(),
+                      InkWell(
+                          onTap: () {
+                            HomeWidgets.scrollTop();
+                          },
+                          child: SvgPicture.asset("assets/appImages/markets/up_arrow.svg"))
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 20,
+                ),
+                Row(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20.0),
-                      child: Row(
-                        children: [
-                          Text(
-                            "ZOMATO",
-                            style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          circuitBreakersTab = 1;
+                        });
+                        Dataconstants.circuitBreakersController.getCircuitBreakers();
+                      },
+                      child: Container(
+                          decoration: BoxDecoration(
+                            border: Border(
+                                left: BorderSide(
+                                  color: circuitBreakersTab == 1 ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                                top: BorderSide(
+                                  color: circuitBreakersTab == 1 ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                                bottom: BorderSide(
+                                  color: circuitBreakersTab == 1 ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                                right: BorderSide(
+                                  color: circuitBreakersTab == 1 ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                )),
                           ),
-                          Spacer(),
-                          Icon(
-                            Icons.arrow_drop_up_rounded,
-                            color: Utils.lightGreenColor,
-                          ),
-                          Text(
-                            "19.99%",
-                            style: Utils.fonts(size: 14.0, color: Utils.lightGreenColor, fontWeight: FontWeight.w500),
-                          ),
-                          Spacer(),
-                          Text(
-                            "55.80",
-                            style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                          ),
-                        ],
-                      ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text(
+                              "Upper Circuit",
+                              style: Utils.fonts(size: 12.0, color: circuitBreakersTab == 1 ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5), fontWeight: FontWeight.w500),
+                            ),
+                          )),
                     ),
-                    Divider(
-                      thickness: 1,
-                    )
+                    InkWell(
+                        onTap: () {
+                          setState(() {
+                            circuitBreakersTab = 2;
+                          });
+                          Dataconstants.circuitBreakersController.getCircuitBreakers();
+                        },
+                        child: Container(
+                            decoration: BoxDecoration(
+                              border: Border(
+                                top: BorderSide(
+                                  color: circuitBreakersTab == 2 ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                                bottom: BorderSide(
+                                  color: circuitBreakersTab == 2 ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                                right: BorderSide(
+                                  color: circuitBreakersTab == 2 ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                                left: BorderSide(
+                                  color: circuitBreakersTab == 2 ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                "Lower Circuit",
+                                style: Utils.fonts(size: 12.0, color: circuitBreakersTab == 2 ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5), fontWeight: FontWeight.w500),
+                              ),
+                            )))
                   ],
-                )
-            ],
+                ),
+                SizedBox(
+                  height: 10,
+                ),
+                circuitBreakersTab == 1
+                    ? Obx(() {
+                        return CircuitBreakersController.isLoading.value
+                            ? Container(height: MediaQuery.of(context).size.height * 0.45, child: Align(alignment: Alignment.center, child: Center(child: CircularProgressIndicator())))
+                            : CircuitBreakersController.getUpperCktListItems.length > 0
+                                ? Column(children: [
+                                    ListView.builder(
+                                      shrinkWrap: true,
+                                      itemCount: 4,
+                                      itemBuilder: (BuildContext context, int index) {
+                                        return Column(
+                                          children: [
+                                            Padding(
+                                              padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                              child: Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    CommonFunction.getScripDataModel(
+                                                      exchCode: CircuitBreakersController.getUpperCktListItems[index],
+                                                      exch: "N",
+                                                    ).name,
+                                                    style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                  ),
+                                                  Text(
+                                                    CommonFunction.getScripDataModel(
+                                                      exchCode: CircuitBreakersController.getUpperCktListItems[index],
+                                                      exch: "N",
+                                                    ).percentChange.toStringAsFixed(2),
+                                                    style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                  ),
+                                                  Text(
+                                                    CommonFunction.getScripDataModel(
+                                                      exchCode: CircuitBreakersController.getUpperCktListItems[index],
+                                                      exch: "N",
+                                                    ).close.toStringAsFixed(2),
+                                                    style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Divider(
+                                              thickness: 1,
+                                            )
+                                          ],
+                                        );
+                                      },
+                                    ),
+                                  ])
+                                : Center(
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          "No Data Available",
+                                          style: Utils.fonts(size: 14.0, color: Utils.greyColor),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                      })
+                    : Obx(() {
+                        return CircuitBreakersController.isLoading.value
+                            ? Container(height: MediaQuery.of(context).size.height * 0.45, child: Align(alignment: Alignment.center, child: Center(child: CircularProgressIndicator())))
+                            : CircuitBreakersController.getLowerCktListItems.length > 0
+                                ? Column(children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          "SYMBOL",
+                                          style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w700),
+                                        ),
+                                      ],
+                                    ),
+                                    for (var i = 0; i < 4; i++)
+                                      Column(
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                            child: Row(
+                                              children: [
+                                                Text(
+                                                  CommonFunction.getScripDataModel(
+                                                    exchCode: CircuitBreakersController.getUpperCktListItems[i],
+                                                    exch: "N",
+                                                  ).name,
+                                                  style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Divider(
+                                            thickness: 1,
+                                          )
+                                        ],
+                                      )
+                                  ])
+                                : Center(
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          "No Data Available",
+                                          style: Utils.fonts(size: 14.0, color: Utils.greyColor),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                      })
+                // Obx(() {
+                //   return CircuitBreakersController.
+                // })
+              ],
+            ),
           ),
-        ),
-        Container(
-          height: 4.0,
-          width: MediaQuery.of(context).size.width,
-          color: Utils.greyColor.withOpacity(0.2),
-        ),
-      ],
-    );
+          Container(
+            height: 4.0,
+            width: MediaQuery.of(context).size.width,
+            color: Utils.greyColor.withOpacity(0.2),
+          ),
+        ],
+      );
+    });
   }
 
   static Widget optionChain() {
@@ -11764,26 +12694,29 @@ class HomeWidgets {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                Row(
-                  children: [
-                    Text(
-                      "Option Chain",
-                      style: Utils.fonts(size: 17.0, color: Utils.blackColor),
-                    ),
-                    SizedBox(
-                      width: 10,
-                    ),
-                    SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
-                    Spacer(),
-                    InkWell(
-                        onTap: () {
-                          HomeWidgets.scrollTop();
-                        },
-                        child: SvgPicture.asset("assets/appImages/markets/up_arrow.svg"))
-                  ],
+                InkWell(
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => OptionsPage(optionChainVar == 1 ? false : true)));
+                  },
+                  child: Row(
+                    children: [
+                      Text(
+                        "Option Chain",
+                        style: Utils.fonts(
+                          size: 17.0,
+                        ),
+                      ),
+                      SizedBox(
+                        width: 10,
+                      ),
+                      SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
+                      Spacer(),
+                      SvgPicture.asset("assets/appImages/markets/up_arrow.svg")
+                    ],
+                  ),
                 ),
                 SizedBox(
-                  height: 20,
+                  height: 10,
                 ),
                 Row(
                   children: [
@@ -11859,9 +12792,6 @@ class HomeWidgets {
                     )
                   ],
                 ),
-                SizedBox(
-                  height: 10,
-                ),
               ],
             ),
           ),
@@ -11899,189 +12829,420 @@ class HomeWidgets {
   }
 
   static Widget openInterest(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Text(
-                    "Open Interest Analysis",
-                    style: Utils.fonts(size: 17.0, color: Utils.blackColor),
-                  ),
-                  SizedBox(
-                    width: 10,
-                  ),
-                  SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
-                  Spacer(),
-                  InkWell(
-                      onTap: () {
-                        HomeWidgets.scrollTop();
-                      },
-                      child: SvgPicture.asset("assets/appImages/markets/up_arrow.svg"))
-                ],
-              ),
-              SizedBox(
-                height: 20,
-              ),
-              Row(
-                children: [
-                  Container(
-                      decoration: BoxDecoration(
-                        border: Border(
-                            left: BorderSide(
-                              color: Utils.primaryColor,
-                              width: 1,
-                            ),
-                            top: BorderSide(
-                              color: Utils.primaryColor,
-                              width: 1,
-                            ),
-                            bottom: BorderSide(
-                              color: Utils.primaryColor,
-                              width: 1,
-                            ),
-                            right: BorderSide(
-                              color: Utils.primaryColor,
-                              width: 1,
-                            )),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text(
-                          "NIFTY",
-                          style: Utils.fonts(size: 12.0, color: Utils.primaryColor, fontWeight: FontWeight.w500),
-                        ),
-                      )),
-                  Container(
-                      decoration: BoxDecoration(
-                        border: Border(
-                            top: BorderSide(
-                              color: Utils.greyColor.withOpacity(0.5),
-                              width: 1,
-                            ),
-                            bottom: BorderSide(
-                              color: Utils.greyColor.withOpacity(0.5),
-                              width: 1,
-                            ),
-                            right: BorderSide(
-                              color: Utils.greyColor.withOpacity(0.5),
-                              width: 1,
-                            )),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text(
-                          "BANKNIFTY",
-                          style: Utils.fonts(size: 12.0, color: Utils.greyColor, fontWeight: FontWeight.w500),
-                        ),
-                      ))
-                ],
-              ),
-              SizedBox(
-                height: 20,
-              ),
-              Container(
-                color: Utils.primaryColor.withOpacity(0.1),
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: RichText(
-                    text: TextSpan(
-                      children: [
-                        TextSpan(
-                          text: "Long Buildup ",
-                          style: Utils.fonts(size: 12.0, color: Utils.mediumGreenColor),
-                        ),
-                        TextSpan(
-                          text: "is seen in March expiry with OI addition of 65 lakh.",
-                          style: Utils.fonts(size: 12.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(
-                height: 20,
-              ),
-              Container(
-                color: Utils.primaryColor.withOpacity(0.1),
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
+    return StatefulBuilder(builder: (BuildContext context, StateSetter setState) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                InkWell(
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => OptionsPage(nifty ? false : true)));
+                  },
+                  child: Row(
                     children: [
-                      for (var i = 0; i < 3; i++)
-                        Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    "March",
-                                    style: Utils.fonts(size: 13.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                                  ),
-                                  Spacer(),
-                                  Text(
-                                    "3,46,58,000",
-                                    style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                                  ),
-                                  Text(
-                                    "(+65,323)",
-                                    style: Utils.fonts(size: 13.0, color: Utils.lightGreenColor, fontWeight: FontWeight.w500),
-                                  ),
-                                ],
-                              ),
-                              SizedBox(
-                                height: 10,
-                              ),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Container(
-                                      height: 15,
-                                      width: 100,
-                                      decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5.0))),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(5),
-                                        child: LinearProgressIndicator(
-                                          backgroundColor: Utils.greyColor.withOpacity(0.5),
-                                          valueColor: AlwaysStoppedAnimation<Color>(
-                                            Utils.primaryColor,
-                                          ),
-                                          value: 0.8,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 20,
-                                  ),
-                                  Text(
-                                    "94.56%",
-                                    style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
-                                  ),
-                                ],
-                              )
-                            ],
-                          ),
+                      Text(
+                        "Open Interest Analysis",
+                        style: Utils.fonts(
+                          size: 17.0,
                         ),
+                      ),
+                      SizedBox(
+                        width: 10,
+                      ),
+                      SvgPicture.asset("assets/appImages/arrow_right_circle.svg"),
+                      Spacer(),
+                      InkWell(
+                          onTap: () {
+                            HomeWidgets.scrollTop();
+                          },
+                          child: SvgPicture.asset("assets/appImages/markets/up_arrow.svg"))
                     ],
                   ),
                 ),
-              )
-            ],
+                SizedBox(
+                  height: 20,
+                ),
+                Row(
+                  children: [
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          if (nifty == true) {
+                            nifty = false;
+                          } else {
+                            nifty = true;
+                          }
+                        });
+                      },
+                      child: Container(
+                          decoration: BoxDecoration(
+                            border: Border(
+                                left: BorderSide(
+                                  color: nifty ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                                top: BorderSide(
+                                  color: nifty ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                                bottom: BorderSide(
+                                  color: nifty ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                                right: BorderSide(
+                                  color: nifty ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                )),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text(
+                              "NIFTY",
+                              style: Utils.fonts(size: 12.0, color: nifty ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5), fontWeight: FontWeight.w500),
+                            ),
+                          )),
+                    ),
+                    InkWell(
+                        onTap: () {
+                          setState(() {
+                            if (nifty == false) {
+                              nifty = true;
+                            } else {
+                              nifty = false;
+                            }
+                          });
+                        },
+                        child: Container(
+                            decoration: BoxDecoration(
+                              border: Border(
+                                top: BorderSide(
+                                  color: nifty == false ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                                bottom: BorderSide(
+                                  color: nifty == false ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                                right: BorderSide(
+                                  color: nifty == false ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                                left: BorderSide(
+                                  color: nifty == false ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                "BANKNIFTY",
+                                style: Utils.fonts(size: 12.0, color: nifty == false ? Utils.primaryColor : Utils.greyColor.withOpacity(0.5), fontWeight: FontWeight.w500),
+                              ),
+                            )))
+                  ],
+                ),
+                SizedBox(
+                  height: 20,
+                ),
+                Container(
+                  color: Utils.primaryColor.withOpacity(0.1),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: "Long Buildup ",
+                            style: Utils.fonts(size: 12.0, color: Utils.mediumGreenColor),
+                          ),
+                          TextSpan(
+                            text: "is seen in March expiry with OI addition of 65 lakh.",
+                            style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w500, color: ThemeConstants.themeMode.value == ThemeMode.light ? Utils.blackColor : Utils.whiteColor),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  height: 20,
+                ),
+                Obx(() {
+                  return nifty
+                      ? TopHighestOIController.isLoading.value
+                          ? Center(child: CircularProgressIndicator())
+                          : TopHighestOIController.topHighestOiListItemsNifty.isEmpty
+                              ? Center(child: Text("No Data Available"))
+                              : Container(
+                                  color: Utils.primaryColor.withOpacity(0.1),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Column(
+                                      children: [
+                                        for (var i = 0; i < TopHighestOIController.topHighestOiListItemsNifty.length; i++)
+                                          Padding(
+                                            padding: const EdgeInsets.all(8.0),
+                                            child: Column(
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    if (TopHighestOIController.topHighestOiListItemsNifty[i].updTime.toString().split("-")[1] == "01")
+                                                      Text(
+                                                        "Jan",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsNifty[i].expDate.toString().split("-")[1] == "02")
+                                                      Text(
+                                                        "Feb",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsNifty[i].expDate.toString().split("-")[1] == "03")
+                                                      Text(
+                                                        "Mar",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsNifty[i].expDate.toString().split("-")[1] == "04")
+                                                      Text(
+                                                        "Apr",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsNifty[i].expDate.toString().split("-")[1] == "05")
+                                                      Text(
+                                                        "May",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsNifty[i].expDate.toString().split("-")[1] == "06")
+                                                      Text(
+                                                        "Jun",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsNifty[i].expDate.toString().split("-")[1] == "07")
+                                                      Text(
+                                                        "July",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsNifty[i].expDate.toString().split("-")[1] == "08")
+                                                      Text(
+                                                        "Aug",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsNifty[i].expDate.toString().split("-")[1] == "09")
+                                                      Text(
+                                                        "Sep",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsNifty[i].expDate.toString().split("-")[1] == "10")
+                                                      Text(
+                                                        "Oct",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsNifty[i].expDate.toString().split("-")[1] == "11")
+                                                      Text(
+                                                        "Nov",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsNifty[i].expDate.toString().split("-")[1] == "12")
+                                                      Text(
+                                                        "Dec",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    Spacer(),
+                                                    Text(
+                                                      TopHighestOIController.topHighestOiListItemsNifty[i].openInterest.toStringAsFixed(2),
+                                                      style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                    ),
+                                                    Text(
+                                                      " (${TopHighestOIController.topHighestOiListItemsNifty[i].chgOpenInt.toStringAsFixed(2)})",
+                                                      style: Utils.fonts(size: 13.0, color: Utils.lightGreenColor, fontWeight: FontWeight.w500),
+                                                    ),
+                                                  ],
+                                                ),
+                                                SizedBox(
+                                                  height: 10,
+                                                ),
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Container(
+                                                        height: 15,
+                                                        width: 100,
+                                                        decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5.0))),
+                                                        child: ClipRRect(
+                                                          borderRadius: BorderRadius.circular(5),
+                                                          child: LinearProgressIndicator(
+                                                            backgroundColor: Utils.greyColor.withOpacity(0.5),
+                                                            valueColor: AlwaysStoppedAnimation<Color>(
+                                                              Utils.primaryColor,
+                                                            ),
+                                                            value:
+                                                                (TopHighestOIController.topHighestOiListItemsNifty[i].openInterest.toDouble() / TopHighestOIController.addedValueNifty.toDouble() * 100)
+                                                                        .toDouble() *
+                                                                    0.01,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    SizedBox(
+                                                      width: 20,
+                                                    ),
+                                                    Text(
+                                                      "${(TopHighestOIController.topHighestOiListItemsNifty[i].openInterest.toDouble() / TopHighestOIController.addedValueBankNifty.toDouble() * 100).toStringAsFixed(2)}%",
+                                                      style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                    ),
+                                                  ],
+                                                )
+                                              ],
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                      : TopHighestOIController.isLoading.value
+                          ? Center(child: CircularProgressIndicator())
+                          : TopHighestOIController.topHighestOiListItemsBankNifty.isEmpty
+                              ? Center(child: Text("No Data Available"))
+                              : Container(
+                                  color: Utils.primaryColor.withOpacity(0.1),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Column(
+                                      children: [
+                                        for (var i = 0; i < TopHighestOIController.topHighestOiListItemsBankNifty.length; i++)
+                                          Padding(
+                                            padding: const EdgeInsets.all(8.0),
+                                            child: Column(
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    if (TopHighestOIController.topHighestOiListItemsBankNifty[i].updTime.toString().split("-")[1] == "01")
+                                                      Text(
+                                                        "Jan",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsBankNifty[i].expDate.toString().split("-")[1] == "02")
+                                                      Text(
+                                                        "Feb",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsBankNifty[i].expDate.toString().split("-")[1] == "03")
+                                                      Text(
+                                                        "Mar",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsBankNifty[i].expDate.toString().split("-")[1] == "04")
+                                                      Text(
+                                                        "Apr",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsBankNifty[i].expDate.toString().split("-")[1] == "05")
+                                                      Text(
+                                                        "May",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsBankNifty[i].expDate.toString().split("-")[1] == "06")
+                                                      Text(
+                                                        "Jun",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsBankNifty[i].expDate.toString().split("-")[1] == "07")
+                                                      Text(
+                                                        "July",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsBankNifty[i].expDate.toString().split("-")[1] == "08")
+                                                      Text(
+                                                        "Aug",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsBankNifty[i].expDate.toString().split("-")[1] == "09")
+                                                      Text(
+                                                        "Sep",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsBankNifty[i].expDate.toString().split("-")[1] == "10")
+                                                      Text(
+                                                        "Oct",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsBankNifty[i].expDate.toString().split("-")[1] == "11")
+                                                      Text(
+                                                        "Nov",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    if (TopHighestOIController.topHighestOiListItemsBankNifty[i].expDate.toString().split("-")[1] == "12")
+                                                      Text(
+                                                        "Dec",
+                                                        style: Utils.fonts(size: 13.0, fontWeight: FontWeight.w500),
+                                                      ),
+                                                    Spacer(),
+                                                    Text(
+                                                      TopHighestOIController.topHighestOiListItemsBankNifty[i].openInterest.toStringAsFixed(2),
+                                                      style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                    ),
+                                                    Text(
+                                                      " (${TopHighestOIController.topHighestOiListItemsBankNifty[i].chgOpenInt.toStringAsFixed(2)})",
+                                                      style: Utils.fonts(size: 13.0, color: Utils.lightGreenColor, fontWeight: FontWeight.w500),
+                                                    ),
+                                                  ],
+                                                ),
+                                                SizedBox(
+                                                  height: 10,
+                                                ),
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Container(
+                                                        height: 15,
+                                                        width: 100,
+                                                        decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5.0))),
+                                                        child: ClipRRect(
+                                                          borderRadius: BorderRadius.circular(5),
+                                                          child: LinearProgressIndicator(
+                                                            backgroundColor: Utils.greyColor.withOpacity(0.5),
+                                                            valueColor: AlwaysStoppedAnimation<Color>(
+                                                              Utils.primaryColor,
+                                                            ),
+                                                            value: (TopHighestOIController.topHighestOiListItemsBankNifty[i].openInterest.toDouble() /
+                                                                        TopHighestOIController.addedValueBankNifty.toDouble() *
+                                                                        100)
+                                                                    .toDouble() *
+                                                                0.01,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    SizedBox(
+                                                      width: 20,
+                                                    ),
+                                                    Text(
+                                                      "${(TopHighestOIController.topHighestOiListItemsBankNifty[i].openInterest.toDouble() / TopHighestOIController.addedValueNifty.toDouble() * 100).toStringAsFixed(2)}%",
+                                                      style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
+                                                    ),
+                                                  ],
+                                                )
+                                              ],
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                })
+              ],
+            ),
           ),
-        ),
-        Container(
-          height: 4.0,
-          width: MediaQuery.of(context).size.width,
-          color: Utils.greyColor.withOpacity(0.2),
-        ),
-      ],
-    );
+          Container(
+            height: 4.0,
+            width: MediaQuery.of(context).size.width,
+            color: Utils.greyColor.withOpacity(0.2),
+          ),
+        ],
+      );
+    });
   }
 
   static Widget nfo(BuildContext context) {
@@ -12095,7 +13256,9 @@ class HomeWidgets {
                 children: [
                   Text(
                     "NFO",
-                    style: Utils.fonts(size: 17.0, color: Utils.blackColor),
+                    style: Utils.fonts(
+                      size: 17.0,
+                    ),
                   ),
                   Spacer(),
                   InkWell(
@@ -12126,7 +13289,7 @@ class HomeWidgets {
                             children: [
                               Text(
                                 "ICICI Technology Direct Growth",
-                                style: Utils.fonts(size: 14.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
+                                style: Utils.fonts(size: 14.0, fontWeight: FontWeight.w500),
                               ),
                               SizedBox(
                                 height: 10,
@@ -12165,7 +13328,7 @@ class HomeWidgets {
                               ),
                               Text(
                                 "10",
-                                style: Utils.fonts(size: 12.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
+                                style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w500),
                               ),
                             ],
                           ),
@@ -12181,7 +13344,7 @@ class HomeWidgets {
                               ),
                               Text(
                                 "18 May - 20 May 22",
-                                style: Utils.fonts(size: 12.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
+                                style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w500),
                               ),
                             ],
                           ),
@@ -12197,7 +13360,7 @@ class HomeWidgets {
                               ),
                               Text(
                                 "5000",
-                                style: Utils.fonts(size: 12.0, color: Utils.blackColor, fontWeight: FontWeight.w500),
+                                style: Utils.fonts(size: 12.0, fontWeight: FontWeight.w500),
                               ),
                             ],
                           ),

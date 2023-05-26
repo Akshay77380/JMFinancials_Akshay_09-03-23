@@ -277,5 +277,34 @@ class NewsDatabase {
       return [];
     }
   }
+  List<NewsRecordModel> getScripNewsForPortfolio(int nseCode) {
+    try {
+      // var results = await _database.rawQuery(
+      //     "SELECT * from News where NseCode='$nseCode' order by NewsDate DESC");
+      List<NewsRecordModel> scripNews = [];
+      ScripStaticModel model =
+      Dataconstants.exchData[0].getStaticModel(nseCode);
+      for (int i = 0; i < Dataconstants.allNews.length; i++) {
+        if (Dataconstants.allNews[i]["NseCode"] == nseCode) {
+          var newRecord = NewsRecordModel.init(
+            Dataconstants.allNews[i]['Category'],
+            Dataconstants.allNews[i]['CompanyName'],
+            Dataconstants.allNews[i]['NewsDescription'],
+            Dataconstants.allNews[i]['NseCode'],
+            Dataconstants.allNews[i]['BseCode'],
+            Dataconstants.allNews[i]['NewsDate'],
+            model,
+          );
+          print(newRecord);
+          // print('check----->${Dataconstants.allNews}');
+          scripNews.add(newRecord);
+        }
+      }
+      return scripNews;
+    } catch (e) {
+      // //print(e);
+      return [];
+    }
+  }
 }
 

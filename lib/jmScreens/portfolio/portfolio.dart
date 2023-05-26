@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:bubble_tab_indicator/bubble_tab_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:markets/controllers/PortfolioControllers/PortfolioDerivateController.dart';
 import 'package:markets/jmScreens/portfolio/closed_holdings.dart';
+import 'package:markets/jmScreens/portfolio/currency_portfolio.dart';
 import 'package:markets/jmScreens/portfolio/list_holder.dart';
 import 'package:markets/jmScreens/portfolio/dividend_portfolio.dart';
 import 'package:markets/jmScreens/portfolio/empty_portfolio_screen.dart';
@@ -15,6 +17,7 @@ import '../../util/Dataconstants.dart';
 import '../../util/InAppSelections.dart';
 import '../../util/Utils.dart';
 import '../../widget/custom_tab_bar.dart';
+import 'commodity_portfolio.dart';
 import 'equity_portfolio.dart';
 import 'f&o_portfolio.dart';
 import 'view_transactions.dart';
@@ -22,8 +25,7 @@ import 'view_transactions.dart';
 class PortfolioScreenJm extends StatefulWidget {
 
   int index = 0;
-
-  PortfolioScreenJm(this.index);
+    PortfolioScreenJm(this.index);
 
   @override
   State<PortfolioScreenJm> createState() => _PortfolioScreenJmState();
@@ -50,6 +52,7 @@ class _PortfolioScreenJmState extends State<PortfolioScreenJm>
       // CommonFunction.portfolioTrPositionsCMDetail();
       // CommonFunction.portfolioTrPLSummaryCMFY();
       // CommonFunction.portfolioTrPLSummaryCMFYDetail();
+      PortfolioDerivateController.getDetailResultListItems1;
     });
 
     _tabController = TabController(vsync: this, length: 5) ..addListener(() {
@@ -105,7 +108,7 @@ class _PortfolioScreenJmState extends State<PortfolioScreenJm>
               Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (context) => viewTransactions()
+                      builder: (context) => viewTransactions(productCode: null,)
                   )
               );
             },
@@ -191,7 +194,7 @@ class _PortfolioScreenJmState extends State<PortfolioScreenJm>
                       //print("index : $_index");
                     });
                   },
-                  tabs: [
+                  tabs: const [
                     Tab(
                       child: Text("Equity"),
                     ),
@@ -218,14 +221,14 @@ class _PortfolioScreenJmState extends State<PortfolioScreenJm>
         children: [
           Expanded(
             child: TabBarView(
-              physics: CustomTabBarScrollPhysics(),
+              physics: const CustomTabBarScrollPhysics(),
               controller: _tabController,
               children: [
                 EquityPorfolio(),
-                Fno_portfolio(),
-               Text("MF"),
-                Fno_portfolio(),
-                Fno_portfolio(),
+                Fno_portfolio(mtm_pl: Dataconstants.deriv_MTM_PL,marginused: Dataconstants.deriv_Margin_Used),
+                const Text("MF"),
+                Commodity_Portfolio(mtm_pl: Dataconstants.cdx_MTM_PL,marginused: Dataconstants.cdx_Margin_Used),
+                Currency_portfolio(mtm_pl: Dataconstants.cur_MTM_PL,marginused: Dataconstants.cur_Margin_Used),
               ],
             ),
           ),

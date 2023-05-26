@@ -33,6 +33,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.5"
+  alt_sms_autofill:
+    dependency: "direct main"
+    description:
+      name: alt_sms_autofill
+      sha256: "638999204626ee3dff0bdb3576646413565422736abd66a54bf7e0cc87df8860"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.0"
   analyzer:
     dependency: transitive
     description:

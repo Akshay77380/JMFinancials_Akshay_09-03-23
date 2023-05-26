@@ -1,18 +1,50 @@
+import 'dart:convert';
+
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
-
+import 'package:get/get_rx/src/rx_types/rx_types.dart';
+import 'package:markets/controllers/fundtransactioncontroller.dart';
+import 'package:markets/util/CommonFunctions.dart';
+import '../../model/custom_processed.dart';
+import '../../util/Dataconstants.dart';
 import '../../util/Utils.dart';
+import 'package:markets/model/jmModel/fundtransactionmodel.dart';
+
+import '../watchlist/jmWatchlistScreen.dart';
+import 'AddMoney.dart';
 
 class PayDetails extends StatefulWidget {
-  var status;
+  String status;
+  // Detail details;
+  CustomProcessed details;
+  Datum fundTransactionModel;
 
-  PayDetails(this.status);
+  PayDetails({this.status, this.details, this.fundTransactionModel});
 
   @override
   State<PayDetails> createState() => _PayDetailsState();
 }
 
 class _PayDetailsState extends State<PayDetails> {
+  @override
+  void initState() {
+    // TODO: implement initState
+    getPaymentAccessToken();
+    super.initState();
+  }
+
+  getPaymentAccessToken() async {
+    var header = {"application": "Intellect"};
+    var stringResponse = await CommonFunction.getPaymentAccessToken(header);
+    var jsonResponse = jsonDecode(stringResponse);
+    print("Get access token: ${jsonResponse}");
+    Dataconstants.fundstoken = await jsonResponse['data'];
+    await Dataconstants.bankDetailsController.getBankDetails();
+    // print(Dataconstants.fundstoken);
+    // getBankdetails();
+    return Dataconstants.fundstoken;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -24,7 +56,6 @@ class _PayDetailsState extends State<PayDetails> {
             margin: EdgeInsets.zero,
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            color: Colors.white,
             child: Padding(
               padding: const EdgeInsets.all(15.0),
               child: Column(
@@ -33,7 +64,7 @@ class _PayDetailsState extends State<PayDetails> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        "Pay In Details",
+                        "Pay Out Details",
                         style: Utils.fonts(size: 20.0),
                       ),
                       InkWell(
@@ -61,7 +92,7 @@ class _PayDetailsState extends State<PayDetails> {
                                 fontWeight: FontWeight.w400),
                           ),
                           Text(
-                            "HDFC BANK",
+                            widget.fundTransactionModel.bankName ?? "",
                             style: Utils.fonts(
                               fontWeight: FontWeight.w700,
                               size: 15.0,
@@ -84,16 +115,17 @@ class _PayDetailsState extends State<PayDetails> {
                             style: Utils.fonts(
                                 fontWeight: FontWeight.w700,
                                 size: 15.0,
-                                color: widget.status.toString().toUpperCase() ==
-                                        "PENDING"
+                                color: widget.status.toString().toUpperCase() == "PENDING"
                                     ? Utils.primaryColor
-                                    : Utils.darkGreenColor),
+                                    : widget.status.toString().trim().toUpperCase() == "CANCELLED"
+                                        ? Utils.darkRedColor
+                                        : Utils.darkGreenColor),
                           )
                         ],
                       ),
                     ],
                   ),
-                  SizedBox(
+                  const SizedBox(
                     height: 20,
                   ),
                   Container(
@@ -102,12 +134,12 @@ class _PayDetailsState extends State<PayDetails> {
                           color: Utils.greyColor,
                           width: 1,
                         ),
-                        borderRadius: BorderRadius.all(
+                        borderRadius: const BorderRadius.all(
                           Radius.circular(15.0),
                         )),
                     child: Column(
                       children: [
-                        SizedBox(
+                        const SizedBox(
                           height: 10,
                         ),
                         Text("Amount",
@@ -118,10 +150,36 @@ class _PayDetailsState extends State<PayDetails> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text("₹62,680",
+                            Text(
+                                // widget.fundTransactionModel.status == "Pending"
+                                //     ? "₹${widget.details.amount}"
+                                //     : "₹${widget.fundTransactionModel.approvedAmount}",
+                                // style: Utils.fonts(
+                                //     size: 35.0,
+                                //     color:
+                                //         double.parse(widget.details.amount) < 0
+                                //             ? Utils.darkRedColor
+                                //             : double.parse(widget
+                                //                         .fundTransactionModel
+                                //                         .approvedAmount) <
+                                //                     0
+                                //                 ? Utils.darkRedColor
+                                //                 : Utils.darkGreenColor,
+                                //     fontWeight: FontWeight.w700)),
+                                widget.details.status == "Pending"
+                                    ? "₹${widget.details.totalAmount}"
+                                    : widget.details.status == "Processed"
+                                        ? "₹${widget.fundTransactionModel.approvedAmount}"
+                                        : widget.details.status == "Cancelled"
+                                            ? "₹${widget.details.totalAmount}" // Set the desired text for cancelled status
+                                            : "₹${widget.details.totalAmount}",
                                 style: Utils.fonts(
                                     size: 35.0,
-                                    color: Utils.darkGreenColor,
+                                    color: double.parse(widget.details.totalAmount) < 0
+                                        ? Utils.darkRedColor
+                                        : double.parse(widget.fundTransactionModel.approvedAmount) < 0
+                                            ? Utils.darkRedColor
+                                            : Utils.darkGreenColor,
                                     fontWeight: FontWeight.w700)),
                           ],
                         ),
@@ -139,11 +197,9 @@ class _PayDetailsState extends State<PayDetails> {
                               size: 14.0,
                               fontWeight: FontWeight.w400,
                               color: Utils.greyColor)),
-                      Text("10116241",
+                      Text(widget.fundTransactionModel.clientCode,
                           style: Utils.fonts(
-                              size: 14.0,
-                              color: Utils.blackColor,
-                              fontWeight: FontWeight.w700))
+                              size: 12.0, fontWeight: FontWeight.w700))
                     ],
                   ),
                   SizedBox(
@@ -157,11 +213,9 @@ class _PayDetailsState extends State<PayDetails> {
                               size: 14.0,
                               fontWeight: FontWeight.w400,
                               color: Utils.greyColor)),
-                      Text("10115643",
+                      Text(widget.fundTransactionModel.clientCode,
                           style: Utils.fonts(
-                              size: 14.0,
-                              color: Utils.blackColor,
-                              fontWeight: FontWeight.w700))
+                              size: 12.0, fontWeight: FontWeight.w700))
                     ],
                   ),
                   SizedBox(
@@ -175,14 +229,12 @@ class _PayDetailsState extends State<PayDetails> {
                               size: 14.0,
                               fontWeight: FontWeight.w400,
                               color: Utils.greyColor)),
-                      Text("2203280112183",
+                      Text(widget.fundTransactionModel.refNo,
                           style: Utils.fonts(
-                              size: 14.0,
-                              color: Utils.blackColor,
-                              fontWeight: FontWeight.w700))
+                              size: 12.0, fontWeight: FontWeight.w700))
                     ],
                   ),
-                  SizedBox(
+                  const SizedBox(
                     height: 10,
                   ),
                   Row(
@@ -193,14 +245,39 @@ class _PayDetailsState extends State<PayDetails> {
                               size: 14.0,
                               fontWeight: FontWeight.w400,
                               color: Utils.greyColor)),
-                      Text("12 Apr 2022 12:45",
+                      Text(
+                          widget.fundTransactionModel.transactionDate
+                              .toString(),
                           style: Utils.fonts(
-                              size: 14.0,
-                              color: Utils.blackColor,
-                              fontWeight: FontWeight.w700))
+                              size: 12.0, fontWeight: FontWeight.w700))
                     ],
                   ),
-                  SizedBox(
+                  const SizedBox(
+                    height: 10,
+                  ),
+              if(widget.status == "Processed")
+              Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // ...FundTransactionControlller.getFundTransactionList.map((item) => Row(
+                  //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  //   children: [
+                  //     Text("Requested Amount:",
+                  //         style: Utils.fonts(
+                  //             size: 14.0,
+                  //             fontWeight: FontWeight.w400,
+                  //             color: Utils.greyColor)),
+                  //     Text(
+                  //         item.amount,
+                  //         style: Utils.fonts(
+                  //             size: 12.0, fontWeight: FontWeight.w700))
+                  //   ],
+                  // )).toList(),
+
+                ],
+              ),
+
+              const SizedBox(
                     height: 10,
                   ),
                   if (widget.status.toString().toUpperCase() == "SUCCESS")
@@ -216,9 +293,7 @@ class _PayDetailsState extends State<PayDetails> {
                                     color: Utils.greyColor)),
                             Text("234134223",
                                 style: Utils.fonts(
-                                    size: 14.0,
-                                    color: Utils.blackColor,
-                                    fontWeight: FontWeight.w700))
+                                    size: 14.0, fontWeight: FontWeight.w700))
                           ],
                         ),
                         SizedBox(
@@ -226,29 +301,29 @@ class _PayDetailsState extends State<PayDetails> {
                         ),
                       ],
                     ),
-                  if (widget.status.toString().toUpperCase() == "PENDING")
-                    Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text("Remark",
-                                style: Utils.fonts(
-                                    size: 14.0,
-                                    fontWeight: FontWeight.w400,
-                                    color: Utils.greyColor)),
-                            Text("Towards Clear Balance",
-                                style: Utils.fonts(
-                                    size: 14.0,
-                                    color: Utils.blackColor,
-                                    fontWeight: FontWeight.w700))
-                          ],
-                        ),
-                        SizedBox(
-                          height: 10,
-                        ),
-                      ],
-                    ),
+                  // if (widget.status.toString().toUpperCase() == "PENDING")
+                  //   Column(
+                  //     children: [
+                  //       Row(
+                  //         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  //         children: [
+                  //           Text("Remark",
+                  //               style: Utils.fonts(
+                  //                   size: 14.0,
+                  //                   fontWeight: FontWeight.w400,
+                  //                   color: Utils.greyColor)),
+                  //           Text("Towards Clear Balance",
+                  //               style: Utils.fonts(
+                  //                   size: 14.0,
+                  //                   color: Utils.blackColor,
+                  //                   fontWeight: FontWeight.w700))
+                  //         ],
+                  //       ),
+                  //       SizedBox(
+                  //         height: 10,
+                  //       ),
+                  //     ],
+                  //   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -259,46 +334,72 @@ class _PayDetailsState extends State<PayDetails> {
                               color: Utils.greyColor)),
                       Text("Towards Clear Balance",
                           style: Utils.fonts(
-                              size: 14.0,
-                              color: Utils.blackColor,
-                              fontWeight: FontWeight.w700))
+                              size: 12.0, fontWeight: FontWeight.w700))
                     ],
                   ),
-                  SizedBox(
+                  const SizedBox(
                     height: 10,
                   ),
                 ],
               ),
             ),
           ),
-          SizedBox(
+          const SizedBox(
             height: 10,
           ),
-          if (widget.status.toString().toUpperCase() == "PENDING")
+          if (widget.fundTransactionModel.status.toString().toUpperCase() ==
+              "PENDING")
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 Expanded(
                   child: Card(
                     margin: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(
+                    shape: const RoundedRectangleBorder(
                         borderRadius: BorderRadius.only(
                             topLeft: Radius.circular(10.0),
                             bottomLeft: Radius.circular(10.0))),
                     color: Utils.primaryColor,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Utils.whiteColor,
-                        borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(10.0),
-                            bottomLeft: Radius.circular(10.0)),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: Center(
-                          child: Text("CANCEL",
-                              style: Utils.fonts(
-                                  size: 16.0, color: Utils.greyColor)),
+                    child: InkWell(
+                      onTap: () async {
+                        // Navigator.pop(context);
+                        var requestCollPayout = {
+                          "Amount": widget.details.totalAmount,
+                          "Platform_Flg": "MOBILE",
+
+                          /// WEB/MOBILE/EXE
+                          "token": Dataconstants.fundstoken,
+                          "Merchant_RefNo": widget.fundTransactionModel.refNo, //if Req_action is Modify/cancel then pass this from GetPayoutDetail
+                          "Id": widget.details.payOutId, //if Req_action is Modify/cancel then pass this from GetPayoutDetails ID
+                          "Req_action": "Cancel" //Initiate / Modify /Cancel
+                        };
+                        var response = await CommonFunction.getCollectPayout(requestCollPayout);
+                        var jsondata = json.decode(response);
+                        var message = jsondata["message"];
+                        CommonFunction.showBasicToast(message);
+                        Navigator.pop(context);
+
+                        CommonFunction.getpaymentstatus();
+                        CommonFunction.getPaymentAccessTokenFund();
+                        CommonFunction.getLastDates(1);
+
+                        setState(() {});
+                        print(message);
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Utils.whiteColor,
+                          borderRadius: BorderRadius.only(
+                              topLeft: Radius.circular(10.0),
+                              bottomLeft: Radius.circular(10.0)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Center(
+                            child: Text("CANCEL",
+                                style: Utils.fonts(
+                                    size: 16.0, color: Utils.greyColor)),
+                          ),
                         ),
                       ),
                     ),
@@ -313,19 +414,43 @@ class _PayDetailsState extends State<PayDetails> {
                           bottomRight: Radius.circular(10.0)),
                     ),
                     color: Utils.primaryColor,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Utils.primaryColor,
-                        borderRadius: BorderRadius.only(
-                            topRight: Radius.circular(10.0),
-                            bottomRight: Radius.circular(10.0)),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: Center(
-                          child: Text("MODIFY",
-                              style: Utils.fonts(
-                                  size: 16.0, color: Utils.whiteColor)),
+                    child: InkWell(
+                      onTap: () {
+                        Dataconstants.payInModifyButton
+                            ? Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => AddMoney(
+                                          money: widget.fundTransactionModel
+                                                      .status ==
+                                                  "Pending"
+                                              ? widget.details.totalAmount
+                                              : widget
+                                                  .fundTransactionModel.amount,
+                                          fromActivity: "PayOut",
+                                          type: "modify",
+                                          merchantref:
+                                              widget.fundTransactionModel.refNo,
+                                          id: widget.details.payOutId,
+                                          payOutId: widget.details.payOutId,
+                                        )))
+                            : null;
+                        Dataconstants.payInModifyButton = false;
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Utils.primaryColor,
+                          borderRadius: BorderRadius.only(
+                              topRight: Radius.circular(10.0),
+                              bottomRight: Radius.circular(10.0)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Center(
+                            child: Text("MODIFY",
+                                style: Utils.fonts(
+                                    size: 16.0, color: Utils.whiteColor)),
+                          ),
                         ),
                       ),
                     ),
@@ -333,6 +458,91 @@ class _PayDetailsState extends State<PayDetails> {
                 ),
               ],
             )
+          else if (widget.details.status
+                  .toString()
+                  .toUpperCase() ==
+              "CANCELLED" || widget.fundTransactionModel.status
+              .toString()
+              .toUpperCase() ==
+              "CANCELLED")
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Expanded(
+                  child: Card(
+                    margin: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(10.0),
+                            bottomLeft: Radius.circular(10.0))),
+                    color: Utils.primaryColor,
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => AddMoney(),
+                            ));
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Utils.whiteColor,
+                          borderRadius: BorderRadius.only(
+                              topLeft: Radius.circular(10.0),
+                              bottomLeft: Radius.circular(10.0)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Center(
+                            child: Text("RETRY",
+                                style: Utils.fonts(
+                                    size: 16.0, color: Utils.greyColor)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Card(
+                    margin: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.only(
+                          topRight: Radius.circular(10.0),
+                          bottomRight: Radius.circular(10.0)),
+                    ),
+                    color: Utils.primaryColor,
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => JmWatchlistScreen(),
+                            ));
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Utils.primaryColor,
+                          borderRadius: BorderRadius.only(
+                              topRight: Radius.circular(10.0),
+                              bottomRight: Radius.circular(10.0)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Center(
+                            child: Text("HOME",
+                                style: Utils.fonts(
+                                    size: 16.0, color: Utils.whiteColor)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            SizedBox.shrink(),
         ],
       ),
     );

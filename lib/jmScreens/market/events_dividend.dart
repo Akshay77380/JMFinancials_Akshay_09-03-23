@@ -1,31 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
-
+import 'package:intl/intl.dart';
+import 'package:markets/screens/intellectChart/Charting/flutter_k_chart.dart';
 import '../../util/Utils.dart';
 
-class EventsDividend extends StatefulWidget {
-
+class EventsDividend2 extends StatefulWidget
+{
+  List<dynamic> matchingDividendList;
+  EventsDividend2(this.matchingDividendList, {Key key}) : super(key: key);
   @override
-  State<EventsDividend> createState() => _EventsDividendState();
+  State<EventsDividend2> createState() => _EventsDividendState2();
 }
 
-class _EventsDividendState extends State<EventsDividend> {
+class _EventsDividendState2 extends State<EventsDividend2> {
   @override
   Widget build(BuildContext context) {
+    if (widget.matchingDividendList == null || widget.matchingDividendList.isEmpty) {
+      return const Center(
+        child: Text(
+          'No Data Available',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 16.0,
+          ),
+        ),
+      );
+    }
     return Column(children: [
-      for (var i = 0; i < 7; i++)
+      for (var i = 0; i < widget.matchingDividendList.length; i++)
         Column(children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("TCS",
+                Text('${widget.matchingDividendList[i]['symbol']}',
                     style: Utils.fonts(
                         fontWeight: FontWeight.w500,
                         size: 14.0,
                         color: Colors.black)),
-                Text("12.50 / share",
+                Text("${widget.matchingDividendList[i]['divamt']} / share",
                     style: Utils.fonts(
                         fontWeight: FontWeight.w500,
                         size: 14.0,
@@ -33,7 +47,7 @@ class _EventsDividendState extends State<EventsDividend> {
               ],
             ),
           ),
-          SizedBox(
+          const SizedBox(
             height: 20,
           ),
           Padding(
@@ -49,11 +63,20 @@ class _EventsDividendState extends State<EventsDividend> {
                             fontWeight: FontWeight.w500,
                             size: 14.0,
                             color: Colors.grey)),
-                    Text("12 Mar, 22",
-                        style: Utils.fonts(
-                            fontWeight: FontWeight.w500,
-                            size: 14.0,
-                            color: Colors.black)),
+                    // Text("",
+                    //     style: Utils.fonts(
+                    //         fontWeight: FontWeight.w500,
+                    //         size: 14.0,
+                    //         color: Colors.black)),
+                    Text(
+                      DateFormat('yyyy-MM-dd').format(widget.matchingDividendList[i]['divDate']),
+                      style: Utils.fonts(
+                        fontWeight: FontWeight.w500,
+                        size: 14.0,
+                        color: Colors.black,
+                      ),
+                    )
+
                   ],
                 ),
                 Column(
@@ -64,11 +87,19 @@ class _EventsDividendState extends State<EventsDividend> {
                             fontWeight: FontWeight.w500,
                             size: 14.0,
                             color: Colors.grey)),
-                    Text("12 Mar, 22",
-                        style: Utils.fonts(
-                            fontWeight: FontWeight.w500,
-                            size: 14.0,
-                            color: Colors.black)),
+                    // Text("12 Mar, 22",
+                    //     style: Utils.fonts(
+                    //         fontWeight: FontWeight.w500,
+                    //         size: 14.0,
+                    //         color: Colors.black)),
+                    Text(
+                      DateFormat('yyyy-MM-dd').format(widget.matchingDividendList[i]['TradeDate']),
+                      style: Utils.fonts(
+                        fontWeight: FontWeight.w500,
+                        size: 14.0,
+                        color: Colors.black,
+                      ),
+                    )
                   ],
                 ),
                 Column(
@@ -79,7 +110,7 @@ class _EventsDividendState extends State<EventsDividend> {
                             fontWeight: FontWeight.w500,
                             size: 14.0,
                             color: Colors.grey)),
-                    Text("5.90%",
+                    Text("-",
                         style: Utils.fonts(
                             fontWeight: FontWeight.w500,
                             size: 14.0,
@@ -94,7 +125,7 @@ class _EventsDividendState extends State<EventsDividend> {
             color: Colors.grey[350],
           ),
         ]),
-      SizedBox(
+      const SizedBox(
         height: 10,
       ),
       Row(
@@ -117,7 +148,7 @@ class _EventsDividendState extends State<EventsDividend> {
           )
         ],
       ),
-      SizedBox(
+      const SizedBox(
         height: 10,
       ),
     ]);
